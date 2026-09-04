@@ -1,456 +1,639 @@
-# AI-Assisted Breed Recognition for Indian Cattle and Buffaloes
+# 🐄 PashuDrishti.ai - AI-Assisted Cattle & Buffalo Breed Recognition
 
-This repository contains a software-only AI/ML system for recognizing Indian cattle and buffalo breeds from images. It supports two common workflows:
+> A production-ready Docker containerized AI/ML system for accurately identifying Indian cattle and buffalo breeds from images using deep learning.
 
-1. **Run the deployed-style FastAPI web app** for image upload, sign-in, prediction, GPS location display, and health checks.
-2. **Train/export the model locally or in Colab** using an already extracted dataset folder.
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-Latest-red?logo=pytorch)](https://pytorch.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-The project uses PyTorch/EfficientNet-B0 for breed classification and FastAPI for the production-style web interface.
+## Overview
 
----
+**PashuDrishti.ai** leverages EfficientNet-B0 and PyTorch to recognize Indian cattle and buffalo breeds with high accuracy. The system is fully containerized with Docker for easy deployment and scaling.
 
-## Quick start: run the web app
+- 🐳 **Docker Containerized** - Deploy anywhere with a single container
+- 🚀 **Production-Ready FastAPI Web App** - Optimized for performance
+- 📸 **Intelligent Image Prediction** - Upload images for instant breed classification
+- 🔐 **User Authentication** - Secure sign-in and account management
+- 📍 **GPS Integration** - Track livestock location with coordinates
+- 💾 **Pre-trained Models** - Quantized & TorchScript export for edge deployment
+- 🌐 **Scalable Deployment** - Docker Compose for multi-service orchestration
 
-### 1. Create and activate a virtual environment
+## 📋 Prerequisites
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
+- Docker & Docker Compose installed ([Installation Guide](https://docs.docker.com/get-docker/))
+- 4GB+ RAM recommended
+- Model bundle: `cattle_model_low_hw.tar.gz` (pre-trained model)
 
-On Windows PowerShell:
+## 🚀 Quick Start with Docker
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Confirm the model bundle exists
-
-The FastAPI app expects this file in the repository root by default:
-
-```text
-cattle_model_low_hw.tar.gz
-```
-
-You can also point to another bundle with the `MODEL_BUNDLE` environment variable.
-
-### 4. Start the app
-
-Recommended direct command:
+### Option 1: Docker Run (Single Container)
 
 ```bash
-uvicorn src.app:app --host 0.0.0.0 --port 8000
+# Clone the repository
+git clone https://github.com/varshith0810/PashuDrishti.ai.git
+cd PashuDrishti.ai
+
+# Build the Docker image
+docker build -t pashudrishti:latest .
+
+# Run the container
+docker run -d \
+  --name pashudrishti \
+  -p 8000:8000 \
+  -e MODEL_BUNDLE=cattle_model_low_hw.tar.gz \
+  -v $(pwd)/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz \
+  pashudrishti:latest
 ```
 
-Compatibility command used by the current Render config:
+Access the app: **http://localhost:8000**
+
+### Option 2: Docker Compose (Recommended)
 
 ```bash
-uvicorn backend.app:app --host 0.0.0.0 --port 8000
+# Clone the repository
+git clone https://github.com/varshith0810/PashuDrishti.ai.git
+cd PashuDrishti.ai
+
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f web
 ```
 
-Open the app:
+Access the app: **http://localhost:8000**
 
-```text
-http://localhost:8000
-```
-
-### 5. Use the web app
-
-1. Open `/create-account` and create a username/password.
-2. Sign in at `/signin`.
-3. Upload an animal image on `/`.
-4. Optionally enter:
-   - Animal ID
-   - GPS coordinates as `lat,long`, for example `30.8717,75.8520`
-5. Submit the form to view:
-   - Predicted breed
-   - Confidence score
-   - Top scores
-   - Uploaded image preview
-   - Location label if GPS lookup is available
-
----
-
-## FastAPI endpoints
-
-| Route | Method | Purpose |
-|---|---:|---|
-| `/health` | GET | Basic health check and model-loaded status |
-| `/` | GET | Authenticated upload/prediction page |
-| `/signin` | GET/POST | Sign-in page and login handler |
-| `/create-account` | GET/POST | Account creation page and handler |
-| `/logout` | GET | Clear current session |
-| `/predict` | POST | Image upload and breed prediction |
-| `/debug/bundle` | GET | Model-bundle inspection when `DEBUG_BUNDLE=true` |
-
----
-
-## Deployment on Render
-
-The repository includes `render.yaml` for Render Blueprint deployment.
-
-Current Render start command:
+### Option 3: Using Docker Hub (Pre-built Image)
 
 ```bash
-uvicorn backend.app:app --host 0.0.0.0 --port $PORT
+docker run -d \
+  --name pashudrishti \
+  -p 8000:8000 \
+  -v $(pwd)/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz \
+  varshith0810/pashudrishti:latest
 ```
 
-`backend.app` is only a compatibility wrapper. The real app lives in `src.app`.
+## 🐳 Docker Configuration
 
-Required deployment files:
+### Dockerfile
 
-```text
-render.yaml
-requirements.txt
-cattle_model_low_hw.tar.gz
-src/app.py
-backend/app.py
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+
+# Run application
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Render environment variables configured in `render.yaml`:
+### Docker Compose Configuration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `MODEL_BUNDLE` | `cattle_model_low_hw.tar.gz` | Model bundle loaded by the app |
-| `DEBUG_BUNDLE` | `false` | Enables `/debug/bundle` when set to `true` |
+```yaml
+version: '3.8'
 
-Recommended production override:
+services:
+  web:
+    build: .
+    container_name: pashudrishti-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - MODEL_BUNDLE=cattle_model_low_hw.tar.gz
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
+      - DEBUG_BUNDLE=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
-| Variable | Purpose |
-|---|---|
-| `SESSION_SECRET` | Secret key for signed browser sessions. Set this to a strong random value in production. |
+  # Optional: PostgreSQL for future database needs
+  # db:
+  #   image: postgres:13
+  #   environment:
+  #     POSTGRES_DB: pashudrishti
+  #     POSTGRES_USER: ${DB_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+  #   volumes:
+  #     - db_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
 
----
+volumes:
+  # db_data:
+  pashudrishti_data:
+```
 
-## Project structure
+## 📦 Building & Publishing Docker Image
 
-```text
-.
-├── app.py                         # Optional Gradio demo app for local model testing
+### Build Locally
+
+```bash
+# Build image
+docker build -t pashudrishti:latest .
+
+# Tag for Docker Hub (optional)
+docker tag pashudrishti:latest varshith0810/pashudrishti:latest
+
+# Push to Docker Hub (requires login)
+docker login
+docker push varshith0810/pashudrishti:latest
+```
+
+### Building with Custom Tags
+
+```bash
+# Tag with version
+docker build -t pashudrishti:v1.0 .
+
+# Tag with multiple labels
+docker build \
+  -t varshith0810/pashudrishti:latest \
+  -t varshith0810/pashudrishti:v1.0 \
+  .
+```
+
+## 🌐 Deployment Options
+
+### AWS ECS (Elastic Container Service)
+
+```bash
+# Push to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
+
+docker tag pashudrishti:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/pashudrishti:latest
+
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/pashudrishti:latest
+```
+
+### Google Cloud Run
+
+```bash
+# Build and deploy
+gcloud run deploy pashudrishti \
+  --source . \
+  --platform managed \
+  --region us-central1 \
+  --port 8000 \
+  --memory 2Gi \
+  --allow-unauthenticated
+```
+
+### Azure Container Instances
+
+```bash
+# Push to Azure Container Registry
+az acr login --name myregistry
+
+docker tag pashudrishti:latest myregistry.azurecr.io/pashudrishti:latest
+
+docker push myregistry.azurecr.io/pashudrishti:latest
+
+# Deploy
+az container create \
+  --resource-group myResourceGroup \
+  --name pashudrishti \
+  --image myregistry.azurecr.io/pashudrishti:latest \
+  --ports 8000 \
+  --cpu 2 \
+  --memory 2
+```
+
+### Docker Swarm
+
+```bash
+# Initialize swarm
+docker swarm init
+
+# Deploy stack
+docker stack deploy -c docker-compose.yml pashudrishti
+
+# Check status
+docker stack services pashudrishti
+```
+
+### Kubernetes (Helm)
+
+```bash
+# Create Kubernetes deployment YAML
+kubectl apply -f kubernetes/deployment.yaml
+
+# Or use Helm (if chart available)
+helm install pashudrishti ./helm-chart
+```
+
+## ⚙️ Environment Variables
+
+| Variable | Default | Purpose | Required |
+|----------|---------|---------|----------|
+| `MODEL_BUNDLE` | `cattle_model_low_hw.tar.gz` | Path to model bundle | ✅ Yes |
+| `SESSION_SECRET` | *(auto-generated)* | Session signing key (use strong value in production) | ✅ Yes |
+| `DEBUG_BUNDLE` | `false` | Enable model inspection endpoint | ❌ No |
+| `LOG_LEVEL` | `info` | Logging level (debug, info, warning, error) | ❌ No |
+| `WORKERS` | `4` | Number of Uvicorn worker processes | ❌ No |
+
+### Set Environment Variables
+
+**In Docker run:**
+```bash
+docker run -e SESSION_SECRET=your-secret-key -e DEBUG_BUNDLE=true ...
+```
+
+**In docker-compose.yml:**
+```yaml
+environment:
+  - SESSION_SECRET=your-secret-key
+  - DEBUG_BUNDLE=true
+  - LOG_LEVEL=debug
+```
+
+**With .env file:**
+```bash
+# Create .env file
+echo "SESSION_SECRET=your-strong-secret-key" > .env
+echo "DEBUG_BUNDLE=false" >> .env
+
+# Use with docker-compose
+docker-compose --env-file .env up -d
+```
+
+## 📂 Model Bundle Setup
+
+### Download Model Bundle
+
+1. Download `cattle_model_low_hw.tar.gz` from project releases
+2. Place in repository root
+
+### Mount Model in Docker
+
+```bash
+# Bind mount (editable)
+docker run -v /path/to/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz ...
+
+# Docker Compose volume
+volumes:
+  - ./cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz
+```
+
+### Verify Model in Container
+
+```bash
+# Inspect model bundle
+docker run -e DEBUG_BUNDLE=true pashudrishti:latest
+
+# Access debug endpoint
+curl http://localhost:8000/debug/bundle
+```
+
+## 🎯 Using the Application
+
+### 1. Create Account
+- Navigate to: `http://localhost:8000/create-account`
+- Enter username and password
+
+### 2. Sign In
+- Go to: `http://localhost:8000/signin`
+- Use your credentials
+
+### 3. Upload & Predict
+- Upload an animal image
+- *(Optional)* Enter Animal ID
+- *(Optional)* Enter GPS coordinates (format: `lat,long`)
+- Submit to view:
+  - Predicted breed
+  - Confidence score
+  - Top 5 predictions
+  - Image preview
+  - Location details
+
+## 📡 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check & model status |
+| `/` | GET | Main prediction interface |
+| `/signin` | GET/POST | User login |
+| `/create-account` | GET/POST | User registration |
+| `/logout` | GET | Clear session |
+| `/predict` | POST | Image upload & breed prediction |
+| `/debug/bundle` | GET | Inspect model bundle *(DEBUG mode only)* |
+
+## 🔍 Container Management
+
+### View Logs
+
+```bash
+# Docker run
+docker logs pashudrishti
+
+# Docker Compose
+docker-compose logs -f web
+
+# Real-time logs with timestamps
+docker logs --timestamps pashudrishti
+```
+
+### Stop/Start Container
+
+```bash
+# Stop
+docker stop pashudrishti
+
+# Start
+docker start pashudrishti
+
+# Restart
+docker restart pashudrishti
+```
+
+### Remove Container
+
+```bash
+# Stop and remove
+docker rm -f pashudrishti
+
+# Clean up all images and containers
+docker system prune -a
+```
+
+### Container Statistics
+
+```bash
+# View resource usage
+docker stats pashudrishti
+
+# View container details
+docker inspect pashudrishti
+```
+
+## 💾 Data Persistence
+
+### Using Volumes
+
+```bash
+# Create named volume
+docker volume create pashudrishti-data
+
+# Use in docker run
+docker run -v pashudrishti-data:/app/data ...
+
+# Use in docker-compose
+volumes:
+  pashudrishti-data:
+    driver: local
+```
+
+### Bind Mounts
+
+```bash
+# Mount local directory
+docker run -v $(pwd)/data:/app/data ...
+```
+
+### Backup & Restore
+
+```bash
+# Backup volume
+docker run --rm -v pashudrishti-data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/data.tar.gz -C /data .
+
+# Restore volume
+docker run --rm -v pashudrishti-data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/data.tar.gz -C /data
+```
+
+## 🛡️ Security Best Practices
+
+### 1. Use Strong Session Secret
+
+```bash
+# Generate strong secret
+openssl rand -hex 32
+
+# Use in production
+docker run -e SESSION_SECRET=$(openssl rand -hex 32) ...
+```
+
+### 2. Run as Non-Root User
+
+Update Dockerfile:
+```dockerfile
+RUN useradd -m -u 1000 appuser
+USER appuser
+```
+
+### 3. Read-Only Filesystem
+
+```bash
+docker run --read-only -v /tmp:/tmp pashudrishti:latest
+```
+
+### 4. Resource Limits
+
+```bash
+docker run -m 2g --cpus 2 pashudrishti:latest
+```
+
+## 🐛 Troubleshooting
+
+### Container Fails to Start
+
+```bash
+# Check logs
+docker logs pashudrishti
+
+# Inspect container
+docker inspect pashudrishti
+
+# Run with interactive shell
+docker run -it pashudrishti:latest /bin/bash
+```
+
+### Model Bundle Not Found
+
+```bash
+# Verify volume mount
+docker run -v pashudrishti-data:/app/data ...
+
+# Check inside container
+docker exec pashudrishti ls -la /app/
+
+# Ensure file exists
+ls -la cattle_model_low_hw.tar.gz
+```
+
+### Port Already in Use
+
+```bash
+# Find process using port 8000
+lsof -i :8000
+
+# Use different port
+docker run -p 8001:8000 pashudrishti:latest
+```
+
+### High Memory Usage
+
+```bash
+# Limit memory in docker-compose
+services:
+  web:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+```
+
+### Database Connection Issues
+
+```bash
+# Check Docker network
+docker network ls
+
+# Connect containers to same network
+docker network create pashudrishti-net
+
+docker run --network pashudrishti-net pashudrishti:latest
+```
+
+## 📊 Production Deployment Checklist
+
+- [ ] Use strong `SESSION_SECRET`
+- [ ] Enable health checks
+- [ ] Set resource limits (CPU, memory)
+- [ ] Use read-only filesystem where possible
+- [ ] Configure logging driver
+- [ ] Setup monitoring & alerts
+- [ ] Use external secrets management (Docker Secrets)
+- [ ] Enable container image scanning
+- [ ] Use specific image tags (not `latest`)
+- [ ] Implement automated backups
+- [ ] Setup CI/CD pipeline for image builds
+- [ ] Document environment variables
+- [ ] Test disaster recovery procedures
+
+## 🔄 CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: varshith0810/pashudrishti:latest
+```
+
+## 📈 Performance Optimization
+
+### Multi-Stage Build
+
+```dockerfile
+FROM python:3.9 AS builder
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.9-slim
+COPY --from=builder /root/.local /root/.local
+COPY . /app
+WORKDIR /app
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0"]
+```
+
+### Worker Configuration
+
+```bash
+docker run -e WORKERS=8 pashudrishti:latest
+```
+
+## 📝 Project Structure
+
+```
+PashuDrishti.ai/
+├── src/
+│   ├── app.py                 # Main FastAPI application
+│   ├── config.py              # Breed list & configuration
+│   ├── infer.py               # Local prediction logic
+│   ├── preprocess.py          # Dataset validation
+│   ├── train.py               # Training script
+│   └── web_app.py             # Web app wrapper
 ├── backend/
-│   ├── app.py                     # Compatibility wrapper: imports app from src.app
-│   ├── db.py                      # Optional SQLite helper for future DB-backed auth/history
-│   ├── schema.sql                 # Optional SQLite schema for users and predictions
-│   └── ml/                        # Older/Colab-oriented ML workspace
-├── cattle_model_low_hw.tar.gz     # Deployment model bundle used by FastAPI app
-├── dataset                        # Text file containing the Kaggle dataset URL
-├── frontend/                      # UI notes/mockup assets only; no separate frontend app yet
-├── render.yaml                    # Render deployment configuration
-├── requirements.txt               # Python dependencies
+│   ├── app.py                 # FastAPI compatibility wrapper
+│   ├── db.py                  # SQLite database helpers
+│   ├── schema.sql             # Database schema
+│   └── ml/                    # ML utilities
 ├── scripts/
-│   ├── export_low_hardware.py     # Export trained model to int8/TorchScript/ONNX artifacts
-│   └── run_pipeline.sh            # Local preprocess + train + Gradio demo helper
-└── src/
-    ├── app.py                     # Main FastAPI app and inference web UI
-    ├── config.py                  # Breed list and standard local paths
-    ├── infer.py                   # Local predictor used by root Gradio app
-    ├── preprocess.py              # Dataset structure validation
-    ├── train.py                   # Training script and optional Gradio app mode
-    └── web_app.py                 # Compatibility wrapper around src.app
+│   ├── export_low_hardware.py # Model optimization
+│   └── run_pipeline.sh        # Training pipeline
+├── Dockerfile                 # Container image definition
+├── docker-compose.yml         # Multi-container orchestration
+├── requirements.txt           # Python dependencies
+├── cattle_model_low_hw.tar.gz # Pre-trained model
+└── README.md                  # This file
 ```
+
+## 📦 Tech Stack
+
+- **Framework:** FastAPI
+- **ML:** PyTorch + EfficientNet-B0
+- **Container:** Docker & Docker Compose
+- **Database:** SQLite (upgradeable to PostgreSQL)
+- **Model Format:** TorchScript, Int8 Quantized
+- **Deployment:** Cloud-native (AWS, GCP, Azure, Kubernetes)
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## 📄 License
+
+MIT License - See LICENSE file for details
+
+## 🙋 Support
+
+For issues, questions, or suggestions:
+1. Open a GitHub Issue
+2. Check troubleshooting section above
+3. Review container logs
 
 ---
 
-## Model bundle expected by the FastAPI app
-
-By default, `src.app` loads:
-
-```text
-cattle_model_low_hw.tar.gz
-```
-
-The bundle must contain:
-
-```text
-class_names.json
-breed_classifier_int8.pt
-```
-
-or:
-
-```text
-class_names.json
-breed_classifier_ts.pt
-```
-
-The loader searches recursively inside the extracted tarball, so nested paths are accepted as long as those filenames exist.
-
-To inspect the bundle in a running app:
-
-```bash
-DEBUG_BUNDLE=true uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
-
-Then open:
-
-```text
-http://localhost:8000/debug/bundle
-```
-
----
-
-## Dataset setup for training
-
-Training expects an already extracted dataset folder. The code does **not** download or unzip the dataset for you.
-
-Expected folder format, either:
-
-```text
-/path/to/breeds/train/<breed_name>/*.jpg
-/path/to/breeds/test/<breed_name>/*.jpg
-```
-
-or:
-
-```text
-/path/to/dataset/breeds/train/<breed_name>/*.jpg
-/path/to/dataset/breeds/test/<breed_name>/*.jpg
-```
-
-The file named `dataset` in this repo contains the Kaggle dataset URL.
-
----
-
-## Validate dataset structure
-
-```bash
-python -m src.preprocess /path/to/breeds
-```
-
-If you do not pass a path, the script will ask for one interactively:
-
-```bash
-python -m src.preprocess
-```
-
-The validation prints:
-
-- missing train/test splits,
-- missing breed folders,
-- image counts per breed.
-
----
-
-## Train a model
-
-Example:
-
-```bash
-python -m src.train --mode all --dataset_dir /path/to/breeds --work_dir . --epochs 8 --batch_size 32 --lr 0.001
-```
-
-Useful modes:
-
-| Mode | What it does |
-|---|---|
-| `preprocess` | Validate dataset structure only |
-| `train` | Train model only |
-| `app` | Launch Gradio app using an existing trained model |
-| `all` | Validate, train, then ask for one image path for a quick prediction |
-
-Training outputs are written under:
-
-```text
-models/
-├── breed_classifier.pt
-└── class_names.json
-```
-
-`models/` is ignored by git because trained model files can be large.
-
----
-
-## Export model for low-hardware deployment
-
-After training, export CPU-friendly artifacts:
-
-```bash
-python scripts/export_low_hardware.py \
-  --model_path models/breed_classifier.pt \
-  --classes_path models/class_names.json \
-  --out_dir models
-```
-
-Generated files:
-
-```text
-models/breed_classifier_int8.pt
-models/breed_classifier_ts.pt
-models/breed_classifier.onnx  # optional; skipped if ONNX dependencies are unavailable
-models/class_names.json
-```
-
-Create the minimal deployment bundle:
-
-```bash
-tar -czf cattle_model_low_hw.tar.gz \
-  -C models \
-  breed_classifier_int8.pt \
-  class_names.json
-```
-
-Then run the FastAPI app again:
-
-```bash
-MODEL_BUNDLE=./cattle_model_low_hw.tar.gz uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## Optional Gradio demo
-
-The root `app.py` launches a simple Gradio UI that uses `src.infer` and expects these local files:
-
-```text
-models/breed_classifier.pt
-models/class_names.json
-```
-
-Run it with:
-
-```bash
-python app.py
-```
-
-This is useful for quick local experiments after training. For deployment, prefer the FastAPI app in `src.app`.
-
----
-
-## One-command local pipeline helper
-
-If your dataset path is provided interactively, you can run:
-
-```bash
-./scripts/run_pipeline.sh
-```
-
-This runs:
-
-1. `python -m src.preprocess`
-2. `python -m src.train`
-3. `python app.py`
-
-For reproducibility, explicit commands with `--dataset_dir` are recommended instead.
-
----
-
-## Colab-oriented single-file workflow
-
-A single-file Colab-oriented script is available at:
-
-```text
-backend/ml/colab_breed_recognition.py
-```
-
-Example:
-
-```bash
-python backend/ml/colab_breed_recognition.py \
-  --mode all \
-  --dataset_dir /path/to/breeds \
-  --work_dir .
-```
-
-This script is useful if you want one file that validates, trains, predicts, or launches a Gradio app in a notebook/Colab-style workflow.
-
----
-
-## Environment variables
-
-| Variable | Used by | Purpose |
-|---|---|---|
-| `MODEL_BUNDLE` | `src.app` | Path to model tarball. Defaults to `cattle_model_low_hw.tar.gz`. |
-| `SESSION_SECRET` | `src.app` | Secret key for browser sessions. Use a strong value in production. |
-| `DEBUG_BUNDLE` | `src.app` | Set to `true` to enable `/debug/bundle`. |
-| `DATASET_DIR` | `backend/ml/colab_breed_recognition.py` | Optional dataset path fallback for the Colab script. |
-| `DB_PATH` | `backend/db.py` | Optional SQLite DB path if DB helpers are wired into the app later. |
-
----
-
-## Troubleshooting
-
-### `Model load failed` or bundle missing
-
-Check that `cattle_model_low_hw.tar.gz` exists in the repo root or set `MODEL_BUNDLE` explicitly:
-
-```bash
-MODEL_BUNDLE=/path/to/cattle_model_low_hw.tar.gz uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
-
-You can inspect bundle contents with:
-
-```bash
-DEBUG_BUNDLE=true uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
-
-Then visit `/debug/bundle`.
-
-### Invalid GPS format
-
-Use this format:
-
-```text
-lat,long
-```
-
-Example:
-
-```text
-30.8717,75.8520
-```
-
-### Training cannot find dataset
-
-Make sure your path contains either:
-
-```text
-train/
-test/
-```
-
-or:
-
-```text
-breeds/train/
-breeds/test/
-```
-
-### Root Gradio app cannot find model
-
-`python app.py` expects:
-
-```text
-models/breed_classifier.pt
-models/class_names.json
-```
-
-If you only have `cattle_model_low_hw.tar.gz`, use the FastAPI app instead.
-
----
-
-## Recommended workflow for new users
-
-If you only want to **try the existing app**:
-
-```bash
-pip install -r requirements.txt
-uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
-
-If you want to **train your own model**:
-
-```bash
-pip install -r requirements.txt
-python -m src.preprocess /path/to/breeds
-python -m src.train --mode train --dataset_dir /path/to/breeds --work_dir .
-python scripts/export_low_hardware.py --model_path models/breed_classifier.pt --classes_path models/class_names.json --out_dir models
-tar -czf cattle_model_low_hw.tar.gz -C models breed_classifier_int8.pt class_names.json
-uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
+**Made with ❤️ for livestock farmers and veterinarians**
