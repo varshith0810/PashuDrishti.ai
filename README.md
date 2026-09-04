@@ -1,639 +1,167 @@
-# 🐄 PashuDrishti.ai - AI-Assisted Cattle & Buffalo Breed Recognition
+# PashuDrishti.ai
 
-> A production-ready Docker containerized AI/ML system for accurately identifying Indian cattle and buffalo breeds from images using deep learning.
-
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-Latest-red?logo=pytorch)](https://pytorch.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+An AI-assisted web application for identifying Indian cattle and buffalo breeds from an uploaded image. PashuDrishti.ai runs a PyTorch EfficientNet-B0 model behind a FastAPI interface and presents the most likely breed alongside its confidence score and top predictions.
 
 ## Overview
 
-**PashuDrishti.ai** leverages EfficientNet-B0 and PyTorch to recognize Indian cattle and buffalo breeds with high accuracy. The system is fully containerized with Docker for easy deployment and scaling.
+PashuDrishti.ai is designed to make breed recognition straightforward for livestock-related workflows. After creating an account and signing in, users can upload an image, optionally record an animal ID and GPS coordinates, and review the prediction result in the browser.
 
-- 🐳 **Docker Containerized** - Deploy anywhere with a single container
-- 🚀 **Production-Ready FastAPI Web App** - Optimized for performance
-- 📸 **Intelligent Image Prediction** - Upload images for instant breed classification
-- 🔐 **User Authentication** - Secure sign-in and account management
-- 📍 **GPS Integration** - Track livestock location with coordinates
-- 💾 **Pre-trained Models** - Quantized & TorchScript export for edge deployment
-- 🌐 **Scalable Deployment** - Docker Compose for multi-service orchestration
+### Key capabilities
 
-## 📋 Prerequisites
+- **Image-based breed recognition** using a trained EfficientNet-B0 classifier.
+- **Top-five predictions** with confidence scores.
+- **Optional animal ID and GPS metadata** included with each prediction result.
+- **Simple browser interface** with account creation and sign-in.
+- **Health and model-bundle diagnostics** for deployment checks.
+- **Model bundle support** for TorchScript or dynamically quantized INT8 model artifacts.
 
-- Docker & Docker Compose installed ([Installation Guide](https://docs.docker.com/get-docker/))
-- 4GB+ RAM recommended
-- Model bundle: `cattle_model_low_hw.tar.gz` (pre-trained model)
+> **Note:** Predictions are model estimates and should be reviewed by a qualified livestock professional when they inform important decisions.
 
-## 🚀 Quick Start with Docker
+## Technology Stack
 
-### Option 1: Docker Run (Single Container)
+**Application and machine learning**
 
-```bash
-# Clone the repository
-git clone https://github.com/varshith0810/PashuDrishti.ai.git
-cd PashuDrishti.ai
+- **FastAPI** provides the web application and HTTP endpoints.
+- **PyTorch** and **Torchvision** run the EfficientNet-B0 classifier and image preprocessing.
+- **Pillow** loads uploaded images.
+- **Uvicorn** serves the ASGI application.
 
-# Build the Docker image
-docker build -t pashudrishti:latest .
+**Supporting tools**
 
-# Run the container
-docker run -d \
-  --name pashudrishti \
-  -p 8000:8000 \
-  -e MODEL_BUNDLE=cattle_model_low_hw.tar.gz \
-  -v $(pwd)/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz \
-  pashudrishti:latest
-```
+- **Gradio** provides an optional local demo (`app.py`).
+- **Pandas**, **scikit-learn**, and related utilities support training workflows.
+- **SQLite helpers** and a schema are included for future persistence work.
 
-Access the app: **http://localhost:8000**
+## Getting Started
 
-### Option 2: Docker Compose (Recommended)
+### Prerequisites
 
-```bash
-# Clone the repository
-git clone https://github.com/varshith0810/PashuDrishti.ai.git
-cd PashuDrishti.ai
+- Python 3.10 or later.
+- A compatible model bundle. The repository includes `cattle_model_low_hw.tar.gz` by default.
+- `pip` for installing Python dependencies.
 
-# Start services
-docker-compose up -d
+### Installation
 
-# View logs
-docker-compose logs -f web
-```
+1. Clone the repository and enter it:
 
-Access the app: **http://localhost:8000**
+   ```bash
+   git clone https://github.com/varshith0810/PashuDrishti.ai.git
+   cd PashuDrishti.ai
+   ```
 
-### Option 3: Using Docker Hub (Pre-built Image)
+2. Create and activate a virtual environment (recommended):
 
-```bash
-docker run -d \
-  --name pashudrishti \
-  -p 8000:8000 \
-  -v $(pwd)/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz \
-  varshith0810/pashudrishti:latest
-```
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
-## 🐳 Docker Configuration
+3. Install the dependencies:
 
-### Dockerfile
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```dockerfile
-FROM python:3.9-slim
+4. Set a strong session secret before starting the application:
 
-WORKDIR /app
+   ```bash
+   export SESSION_SECRET="replace-with-a-long-random-value"
+   ```
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+5. Start the FastAPI application from the repository root:
 
-# Copy application
-COPY . .
+   ```bash
+   PYTHONPATH=backend/ml uvicorn backend.app:app --host 0.0.0.0 --port 8000
+   ```
 
-# Expose port
-EXPOSE 8000
+6. Open [http://localhost:8000](http://localhost:8000), create an account, sign in, and upload an animal image.
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+### Optional: use a different model bundle
 
-# Run application
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Docker Compose Configuration
-
-```yaml
-version: '3.8'
-
-services:
-  web:
-    build: .
-    container_name: pashudrishti-web
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz
-      - ./models:/app/models
-      - ./data:/app/data
-    environment:
-      - MODEL_BUNDLE=cattle_model_low_hw.tar.gz
-      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
-      - DEBUG_BUNDLE=false
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
-  # Optional: PostgreSQL for future database needs
-  # db:
-  #   image: postgres:13
-  #   environment:
-  #     POSTGRES_DB: pashudrishti
-  #     POSTGRES_USER: ${DB_USER:-postgres}
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-  #   volumes:
-  #     - db_data:/var/lib/postgresql/data
-  #   restart: unless-stopped
-
-volumes:
-  # db_data:
-  pashudrishti_data:
-```
-
-## 📦 Building & Publishing Docker Image
-
-### Build Locally
+Set `MODEL_BUNDLE` to the path of a compatible `.tar.gz` bundle before starting the server:
 
 ```bash
-# Build image
-docker build -t pashudrishti:latest .
-
-# Tag for Docker Hub (optional)
-docker tag pashudrishti:latest varshith0810/pashudrishti:latest
-
-# Push to Docker Hub (requires login)
-docker login
-docker push varshith0810/pashudrishti:latest
+export MODEL_BUNDLE=/path/to/model-bundle.tar.gz
+PYTHONPATH=backend/ml uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ```
 
-### Building with Custom Tags
+The bundle must contain `class_names.json` and either `breed_classifier_int8.pt` or `breed_classifier_ts.pt`.
 
-```bash
-# Tag with version
-docker build -t pashudrishti:v1.0 .
+## Using the Application
 
-# Tag with multiple labels
-docker build \
-  -t varshith0810/pashudrishti:latest \
-  -t varshith0810/pashudrishti:v1.0 \
-  .
-```
+1. Visit `/create-account` to create an account.
+2. Sign in at `/signin`.
+3. On the home page, select an animal image.
+4. Optionally enter an animal ID and GPS coordinates in `latitude,longitude` format.
+5. Submit the form to view the predicted breed, confidence score, top-five results, and uploaded image.
 
-## 🌐 Deployment Options
+GPS coordinates are reverse-geocoded when the lookup service is available. If it is unavailable, the submitted coordinates remain visible in the result.
 
-### AWS ECS (Elastic Container Service)
-
-```bash
-# Push to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
-
-docker tag pashudrishti:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/pashudrishti:latest
-
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/pashudrishti:latest
-```
-
-### Google Cloud Run
-
-```bash
-# Build and deploy
-gcloud run deploy pashudrishti \
-  --source . \
-  --platform managed \
-  --region us-central1 \
-  --port 8000 \
-  --memory 2Gi \
-  --allow-unauthenticated
-```
-
-### Azure Container Instances
-
-```bash
-# Push to Azure Container Registry
-az acr login --name myregistry
-
-docker tag pashudrishti:latest myregistry.azurecr.io/pashudrishti:latest
-
-docker push myregistry.azurecr.io/pashudrishti:latest
-
-# Deploy
-az container create \
-  --resource-group myResourceGroup \
-  --name pashudrishti \
-  --image myregistry.azurecr.io/pashudrishti:latest \
-  --ports 8000 \
-  --cpu 2 \
-  --memory 2
-```
-
-### Docker Swarm
-
-```bash
-# Initialize swarm
-docker swarm init
-
-# Deploy stack
-docker stack deploy -c docker-compose.yml pashudrishti
-
-# Check status
-docker stack services pashudrishti
-```
-
-### Kubernetes (Helm)
-
-```bash
-# Create Kubernetes deployment YAML
-kubectl apply -f kubernetes/deployment.yaml
-
-# Or use Helm (if chart available)
-helm install pashudrishti ./helm-chart
-```
-
-## ⚙️ Environment Variables
-
-| Variable | Default | Purpose | Required |
-|----------|---------|---------|----------|
-| `MODEL_BUNDLE` | `cattle_model_low_hw.tar.gz` | Path to model bundle | ✅ Yes |
-| `SESSION_SECRET` | *(auto-generated)* | Session signing key (use strong value in production) | ✅ Yes |
-| `DEBUG_BUNDLE` | `false` | Enable model inspection endpoint | ❌ No |
-| `LOG_LEVEL` | `info` | Logging level (debug, info, warning, error) | ❌ No |
-| `WORKERS` | `4` | Number of Uvicorn worker processes | ❌ No |
-
-### Set Environment Variables
-
-**In Docker run:**
-```bash
-docker run -e SESSION_SECRET=your-secret-key -e DEBUG_BUNDLE=true ...
-```
-
-**In docker-compose.yml:**
-```yaml
-environment:
-  - SESSION_SECRET=your-secret-key
-  - DEBUG_BUNDLE=true
-  - LOG_LEVEL=debug
-```
-
-**With .env file:**
-```bash
-# Create .env file
-echo "SESSION_SECRET=your-strong-secret-key" > .env
-echo "DEBUG_BUNDLE=false" >> .env
-
-# Use with docker-compose
-docker-compose --env-file .env up -d
-```
-
-## 📂 Model Bundle Setup
-
-### Download Model Bundle
-
-1. Download `cattle_model_low_hw.tar.gz` from project releases
-2. Place in repository root
-
-### Mount Model in Docker
-
-```bash
-# Bind mount (editable)
-docker run -v /path/to/cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz ...
-
-# Docker Compose volume
-volumes:
-  - ./cattle_model_low_hw.tar.gz:/app/cattle_model_low_hw.tar.gz
-```
-
-### Verify Model in Container
-
-```bash
-# Inspect model bundle
-docker run -e DEBUG_BUNDLE=true pashudrishti:latest
-
-# Access debug endpoint
-curl http://localhost:8000/debug/bundle
-```
-
-## 🎯 Using the Application
-
-### 1. Create Account
-- Navigate to: `http://localhost:8000/create-account`
-- Enter username and password
-
-### 2. Sign In
-- Go to: `http://localhost:8000/signin`
-- Use your credentials
-
-### 3. Upload & Predict
-- Upload an animal image
-- *(Optional)* Enter Animal ID
-- *(Optional)* Enter GPS coordinates (format: `lat,long`)
-- Submit to view:
-  - Predicted breed
-  - Confidence score
-  - Top 5 predictions
-  - Image preview
-  - Location details
-
-## 📡 API Endpoints
+## API Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check & model status |
-| `/` | GET | Main prediction interface |
-| `/signin` | GET/POST | User login |
-| `/create-account` | GET/POST | User registration |
-| `/logout` | GET | Clear session |
-| `/predict` | POST | Image upload & breed prediction |
-| `/debug/bundle` | GET | Inspect model bundle *(DEBUG mode only)* |
-
-## 🔍 Container Management
-
-### View Logs
-
-```bash
-# Docker run
-docker logs pashudrishti
-
-# Docker Compose
-docker-compose logs -f web
-
-# Real-time logs with timestamps
-docker logs --timestamps pashudrishti
-```
-
-### Stop/Start Container
-
-```bash
-# Stop
-docker stop pashudrishti
-
-# Start
-docker start pashudrishti
-
-# Restart
-docker restart pashudrishti
-```
-
-### Remove Container
-
-```bash
-# Stop and remove
-docker rm -f pashudrishti
-
-# Clean up all images and containers
-docker system prune -a
-```
-
-### Container Statistics
-
-```bash
-# View resource usage
-docker stats pashudrishti
-
-# View container details
-docker inspect pashudrishti
-```
-
-## 💾 Data Persistence
-
-### Using Volumes
-
-```bash
-# Create named volume
-docker volume create pashudrishti-data
-
-# Use in docker run
-docker run -v pashudrishti-data:/app/data ...
-
-# Use in docker-compose
-volumes:
-  pashudrishti-data:
-    driver: local
-```
-
-### Bind Mounts
-
-```bash
-# Mount local directory
-docker run -v $(pwd)/data:/app/data ...
-```
-
-### Backup & Restore
-
-```bash
-# Backup volume
-docker run --rm -v pashudrishti-data:/data -v $(pwd):/backup \
-  alpine tar czf /backup/data.tar.gz -C /data .
-
-# Restore volume
-docker run --rm -v pashudrishti-data:/data -v $(pwd):/backup \
-  alpine tar xzf /backup/data.tar.gz -C /data
-```
-
-## 🛡️ Security Best Practices
-
-### 1. Use Strong Session Secret
-
-```bash
-# Generate strong secret
-openssl rand -hex 32
-
-# Use in production
-docker run -e SESSION_SECRET=$(openssl rand -hex 32) ...
-```
-
-### 2. Run as Non-Root User
-
-Update Dockerfile:
-```dockerfile
-RUN useradd -m -u 1000 appuser
-USER appuser
-```
-
-### 3. Read-Only Filesystem
-
-```bash
-docker run --read-only -v /tmp:/tmp pashudrishti:latest
-```
-
-### 4. Resource Limits
-
-```bash
-docker run -m 2g --cpus 2 pashudrishti:latest
-```
-
-## 🐛 Troubleshooting
-
-### Container Fails to Start
-
-```bash
-# Check logs
-docker logs pashudrishti
-
-# Inspect container
-docker inspect pashudrishti
-
-# Run with interactive shell
-docker run -it pashudrishti:latest /bin/bash
-```
-
-### Model Bundle Not Found
-
-```bash
-# Verify volume mount
-docker run -v pashudrishti-data:/app/data ...
-
-# Check inside container
-docker exec pashudrishti ls -la /app/
-
-# Ensure file exists
-ls -la cattle_model_low_hw.tar.gz
-```
-
-### Port Already in Use
-
-```bash
-# Find process using port 8000
-lsof -i :8000
-
-# Use different port
-docker run -p 8001:8000 pashudrishti:latest
-```
-
-### High Memory Usage
-
-```bash
-# Limit memory in docker-compose
-services:
-  web:
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 1G
-```
-
-### Database Connection Issues
-
-```bash
-# Check Docker network
-docker network ls
-
-# Connect containers to same network
-docker network create pashudrishti-net
-
-docker run --network pashudrishti-net pashudrishti:latest
-```
-
-## 📊 Production Deployment Checklist
-
-- [ ] Use strong `SESSION_SECRET`
-- [ ] Enable health checks
-- [ ] Set resource limits (CPU, memory)
-- [ ] Use read-only filesystem where possible
-- [ ] Configure logging driver
-- [ ] Setup monitoring & alerts
-- [ ] Use external secrets management (Docker Secrets)
-- [ ] Enable container image scanning
-- [ ] Use specific image tags (not `latest`)
-- [ ] Implement automated backups
-- [ ] Setup CI/CD pipeline for image builds
-- [ ] Document environment variables
-- [ ] Test disaster recovery procedures
-
-## 🔄 CI/CD Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Build and Push Docker Image
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: docker/build-push-action@v2
-        with:
-          push: true
-          tags: varshith0810/pashudrishti:latest
-```
-
-## 📈 Performance Optimization
-
-### Multi-Stage Build
-
-```dockerfile
-FROM python:3.9 AS builder
-WORKDIR /build
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-FROM python:3.9-slim
-COPY --from=builder /root/.local /root/.local
-COPY . /app
-WORKDIR /app
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0"]
-```
-
-### Worker Configuration
-
-```bash
-docker run -e WORKERS=8 pashudrishti:latest
-```
-
-## 📝 Project Structure
-
-```
+| --- | --- | --- |
+| `/` | GET | Authenticated image-upload page. |
+| `/health` | GET | Service status and loaded-model information. |
+| `/create-account` | GET, POST | Account registration page and submission. |
+| `/signin` | GET, POST | Sign-in page and submission. |
+| `/logout` | GET | Clears the current session. |
+| `/predict` | POST | Processes an uploaded image and renders the prediction result. |
+| `/debug/bundle` | GET | Lists model-bundle files when diagnostics are enabled. |
+
+To enable the diagnostic endpoint, set `DEBUG_BUNDLE=true` before starting the server. Do not enable it in public production environments unless revealing bundle metadata is acceptable.
+
+## Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MODEL_BUNDLE` | `cattle_model_low_hw.tar.gz` | Path to the model-bundle archive. |
+| `SESSION_SECRET` | `change-me` | Secret used to sign browser sessions. Set a strong, unique value for every deployment. |
+| `DEBUG_BUNDLE` | `false` | Enables the `/debug/bundle` diagnostic endpoint when set to `true`. |
+
+## Project Structure
+
+```text
 PashuDrishti.ai/
-├── src/
-│   ├── app.py                 # Main FastAPI application
-│   ├── config.py              # Breed list & configuration
-│   ├── infer.py               # Local prediction logic
-│   ├── preprocess.py          # Dataset validation
-│   ├── train.py               # Training script
-│   └── web_app.py             # Web app wrapper
 ├── backend/
-│   ├── app.py                 # FastAPI compatibility wrapper
-│   ├── db.py                  # SQLite database helpers
-│   ├── schema.sql             # Database schema
-│   └── ml/                    # ML utilities
-├── scripts/
-│   ├── export_low_hardware.py # Model optimization
-│   └── run_pipeline.sh        # Training pipeline
-├── Dockerfile                 # Container image definition
-├── docker-compose.yml         # Multi-container orchestration
-├── requirements.txt           # Python dependencies
-├── cattle_model_low_hw.tar.gz # Pre-trained model
-└── README.md                  # This file
+│   ├── app.py                  # Deployment-compatible FastAPI entry point
+│   ├── db.py                   # SQLite connection and initialization helpers
+│   ├── schema.sql              # Database schema
+│   └── ml/
+│       ├── src/                # Inference, training, preprocessing, and FastAPI code
+│       └── export_low_hardware.py
+├── scripts/                    # Training-pipeline and model-export scripts
+├── app.py                      # Optional Gradio demo
+├── cattle_model_low_hw.tar.gz  # Default model bundle
+├── requirements.txt            # Python dependencies
+└── Docker                      # Render deployment configuration
 ```
 
-## 📦 Tech Stack
+## Development Notes
 
-- **Framework:** FastAPI
-- **ML:** PyTorch + EfficientNet-B0
-- **Container:** Docker & Docker Compose
-- **Database:** SQLite (upgradeable to PostgreSQL)
-- **Model Format:** TorchScript, Int8 Quantized
-- **Deployment:** Cloud-native (AWS, GCP, Azure, Kubernetes)
+- The primary FastAPI implementation is `backend/ml/src/app.py`; `backend/app.py` exposes it as `backend.app:app` for deployment compatibility.
+- The application keeps account data in memory. Accounts are reset when the process restarts.
+- The included `backend/db.py` and `backend/schema.sql` provide a starting point for adding persistent storage.
+- Training and preprocessing utilities are located in `backend/ml/src/` and `scripts/`.
 
-## 🤝 Contributing
+## Troubleshooting
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+### The server cannot find `src.app`
 
-## 📄 License
+Start the server with `PYTHONPATH=backend/ml`, as shown in the installation instructions. This makes the machine-learning source directory importable.
 
-MIT License - See LICENSE file for details
+### The model bundle cannot be loaded
 
-## 🙋 Support
+Confirm that the `MODEL_BUNDLE` path exists and that the archive contains `class_names.json` plus a supported model file. You can inspect the archive with:
 
-For issues, questions, or suggestions:
-1. Open a GitHub Issue
-2. Check troubleshooting section above
-3. Review container logs
+```bash
+tar -tzf cattle_model_low_hw.tar.gz
+```
 
----
+### The prediction page reports an invalid image
 
-**Made with ❤️ for livestock farmers and veterinarians**
+Upload a readable image file. The server converts valid uploads to RGB before inference.
+
+## License
+
+This project is distributed under the [MIT License](LICENSE).
