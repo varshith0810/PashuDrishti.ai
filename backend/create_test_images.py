@@ -75,27 +75,33 @@ def create_jersey():
     img.save(path, format="PNG")
     return path
 
-def copy_system_samples():
-    sample_paths = []
-    gradio_lion = Path(__file__).resolve().parent.parent / ".venv/Lib/site-packages/gradio/media_assets/images/lion.jpg"
-    if gradio_lion.exists():
-        dest = TEST_DIR / "07_lion_sample.jpg"
-        shutil.copy(gradio_lion, dest)
-        sample_paths.append(dest)
-        
-    sklearn_china = Path(__file__).resolve().parent.parent / ".venv/Lib/site-packages/sklearn/datasets/images/china.jpg"
-    if sklearn_china.exists():
-        dest = TEST_DIR / "08_scenery_china.jpg"
-        shutil.copy(sklearn_china, dest)
-        sample_paths.append(dest)
+def create_lion():
+    img = Image.new("RGB", (300, 250), color=(190, 140, 60))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([50, 40, 250, 210], fill=(160, 110, 40))
+    draw.ellipse([80, 70, 220, 180], fill=(210, 160, 80))
+    img = img.filter(ImageFilter.GaussianBlur(1.0))
+    path = TEST_DIR / "07_lion_sample.jpg"
+    img.save(path, format="JPEG", quality=90)
+    return path
 
-    sklearn_flower = Path(__file__).resolve().parent.parent / ".venv/Lib/site-packages/sklearn/datasets/images/flower.jpg"
-    if sklearn_flower.exists():
-        dest = TEST_DIR / "09_flower_sample.jpg"
-        shutil.copy(sklearn_flower, dest)
-        sample_paths.append(dest)
-        
-    return sample_paths
+def create_scenery():
+    img = Image.new("RGB", (320, 240), color=(135, 206, 235))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 140, 320, 240], fill=(34, 139, 34))
+    draw.ellipse([20, 20, 80, 80], fill=(255, 215, 0))
+    path = TEST_DIR / "08_scenery_china.jpg"
+    img.save(path, format="JPEG", quality=90)
+    return path
+
+def create_flower():
+    img = Image.new("RGB", (256, 256), color=(240, 240, 240))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([60, 60, 196, 196], fill=(255, 105, 180))
+    draw.ellipse([100, 100, 156, 156], fill=(255, 215, 0))
+    path = TEST_DIR / "09_flower_sample.jpg"
+    img.save(path, format="JPEG", quality=90)
+    return path
 
 def generate_all_images():
     generated = [
@@ -105,8 +111,10 @@ def generate_all_images():
         create_sahiwal(),
         create_brahman(),
         create_jersey(),
+        create_lion(),
+        create_scenery(),
+        create_flower(),
     ]
-    generated.extend(copy_system_samples())
     print(f"Generated {len(generated)} diverse test images in {TEST_DIR}:")
     for p in generated:
         print(f"  - {p.name} ({p.stat().st_size} bytes)")

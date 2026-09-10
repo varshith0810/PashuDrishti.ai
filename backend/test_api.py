@@ -116,8 +116,16 @@ async def run_all_tests():
     print(f"  -> Authenticated Home View: 200 OK (User identified as {test_username})")
 
     # 7. Predictions with Different Pictures
-    print("\n--- [7] Testing /predict with MULTIPLE DIFFERENT PICTURES ---")
     image_files = sorted(list(TEST_IMAGES_DIR.glob("*.*")))
+    if not image_files:
+        print("Test images not found, generating on the fly...")
+        try:
+            from create_test_images import generate_all_images
+        except ImportError:
+            from backend.create_test_images import generate_all_images
+        generate_all_images()
+        image_files = sorted(list(TEST_IMAGES_DIR.glob("*.*")))
+
     assert len(image_files) > 0, "No test images found in test_images directory!"
     print(f"Found {len(image_files)} different test images to evaluate:")
 

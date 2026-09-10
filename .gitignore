@@ -1,9 +1,37 @@
+# Python bytecode & cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Environments
 .venv/
+env/
+venv/
+ENV/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Databases & local state
+*.db
+*.sqlite
+*.sqlite3
+backend/app.db
+
+# Logs & temporary files
+*.log
+scratch/
+backend/test_images/
+
+# Local models and data directories
 models/
 data/
 outputs/
 *.pt
 *.pth
-.DS_Store
+
+# Exceptions: Production Model Bundle must be tracked
+!cattle_model_low_hw.tar.gz
