@@ -2,7 +2,8 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.getenv("DB_PATH", "backend/app.db"))
+DEFAULT_DB = Path(__file__).resolve().parent / "app.db"
+DB_PATH = Path(os.getenv("DB_PATH", DEFAULT_DB))
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 

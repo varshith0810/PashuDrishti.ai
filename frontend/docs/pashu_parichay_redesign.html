@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pashu Parichay — Breed Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E9E0C6;
+    --paper-card:#F1E9D3;
+    --paper-dark:#DED2AE;
+    --ink:#232B26;
+    --ink-soft:#5B6259;
+    --rule:#C3B693;
+    --stamp:#A8371C;
+    --stamp-dark:#5F1E0F;
+    --stamp-soft:#F0DCD3;
+    --olive:#6E7548;
+    --olive-dark:#3B4026;
+    --font-mono:'IBM Plex Mono',monospace;
+    --font-sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size:100% 34px;
+    font-family:var(--font-sans);
+    color:var(--ink);
+    padding:40px 16px;
+    display:flex;
+    justify-content:center;
+  }
+  .sheet{
+    width:100%;
+    max-width:920px;
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    position:relative;
+    padding-left:52px;
+    box-shadow:0 1px 0 var(--rule);
+  }
+  .holes{
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:52px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-evenly;
+    align-items:center;
+    border-right:1px dashed var(--rule);
+  }
+  .hole{
+    width:16px;height:16px;border-radius:50%;
+    background:var(--paper);
+    border:1px solid var(--rule);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,0.15);
+  }
+  header.masthead{
+    padding:30px 34px 18px;
+    border-bottom:2px solid var(--ink);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .brand h1{
+    font-family:var(--font-mono);
+    font-weight:600;
+    font-size:28px;
+    margin:0;
+    letter-spacing:0.5px;
+    display:inline-block;
+    transform:scale(1.4) rotate(-8deg);
+    opacity:0;
+    animation:stampIn 480ms cubic-bezier(.2,.9,.3,1) 120ms forwards;
+  }
+  .brand p{
+    margin:6px 0 0;
+    color:var(--ink-soft);
+    font-size:14px;
+  }
+  @keyframes stampIn{
+    to{ transform:scale(1) rotate(-1.5deg); opacity:1; }
+  }
+  .tabs{ display:flex; gap:6px; }
+  .tab{
+    font-family:var(--font-mono);
+    font-size:12px;
+    padding:6px 12px 5px;
+    background:var(--paper-dark);
+    border:1px solid var(--rule);
+    border-bottom:none;
+    color:var(--ink-soft);
+    cursor:default;
+  }
+  .tab.active{
+    background:var(--paper-card);
+    border-color:var(--ink);
+    border-bottom:2px solid var(--paper-card);
+    margin-bottom:-2px;
+    color:var(--ink);
+    font-weight:600;
+  }
+  .tab.done{ color:var(--olive-dark); cursor:pointer; }
+
+  main{ padding:34px; min-height:420px; }
+  .screen{ display:none; }
+  .screen.visible{ display:block; }
+
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:0 0 6px;
+    font-family:var(--font-mono);
+  }
+  input[type=text], input[type=password]{
+    width:100%;
+    font-family:var(--font-sans);
+    font-size:15px;
+    padding:10px 12px;
+    background:var(--paper);
+    border:1px solid var(--rule);
+    color:var(--ink);
+  }
+  input:focus{ outline:2px solid var(--olive); outline-offset:1px; }
+  .field{ margin-bottom:18px; }
+  .row{ display:flex; gap:20px; flex-wrap:wrap; }
+  .row > *{ flex:1 1 220px; }
+
+  .btn{
+    font-family:var(--font-mono);
+    font-size:14px;
+    padding:11px 20px;
+    border:1px solid var(--ink);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .btn:hover{ background:var(--paper-dark); }
+  .btn.primary{
+    background:var(--stamp);
+    border-color:var(--stamp-dark);
+    color:var(--stamp-soft);
+  }
+  .btn.primary:hover{ background:var(--stamp-dark); }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; }
+  .btn.small{ font-size:12px; padding:7px 12px; }
+  .error{ color:var(--stamp-dark); font-size:12px; margin-top:6px; display:none; }
+  .error.show{ display:block; }
+
+  .login-wrap{ max-width:340px; margin:20px auto 0; }
+  .login-wrap .btn{ width:100%; margin-top:8px; }
+
+  .capture-grid{ display:grid; grid-template-columns:1.1fr 1fr; gap:34px; }
+  @media (max-width:680px){ .capture-grid{ grid-template-columns:1fr; } }
+
+  .viewfinder{
+    aspect-ratio:4/3;
+    border:2px solid var(--ink);
+    background:var(--paper-dark);
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .viewfinder img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .viewfinder .placeholder{
+    font-family:var(--font-mono);
+    font-size:13px;
+    color:var(--ink-soft);
+    text-align:center;
+    padding:20px;
+  }
+  .corner{ position:absolute; width:18px; height:18px; border:2px solid var(--stamp); }
+  .corner.tl{ top:8px; left:8px; border-right:none; border-bottom:none; }
+  .corner.tr{ top:8px; right:8px; border-left:none; border-bottom:none; }
+  .corner.bl{ bottom:8px; left:8px; border-right:none; border-top:none; }
+  .corner.br{ bottom:8px; right:8px; border-left:none; border-top:none; }
+
+  .scanline{
+    position:absolute; left:0; right:0; height:3px;
+    background:var(--stamp);
+    opacity:0;
+    top:0;
+  }
+  .scanline.sweep{ animation:sweep 900ms ease-in-out; }
+  .scanline.pulse{ animation:sweep 1100ms ease-in-out infinite; }
+  @keyframes sweep{
+    0%{ top:0; opacity:0.9; }
+    50%{ opacity:0.9; }
+    100%{ top:calc(100% - 3px); opacity:0; }
+  }
+
+  .capture-actions{ display:flex; gap:10px; margin-top:14px; }
+  input[type=file]{ display:none; }
+
+  .gps-row{ display:flex; gap:10px; align-items:flex-end; }
+  .gps-row .field{ flex:1; margin-bottom:0; }
+  .gps-status{ font-size:12px; color:var(--ink-soft); margin-top:6px; }
+
+  .result-strip{ margin-top:8px; }
+  .result-tag{
+    display:inline-block;
+    font-family:var(--font-mono);
+    font-size:34px;
+    font-weight:600;
+    color:var(--stamp);
+    border:3px solid var(--stamp);
+    padding:8px 18px;
+    transform:scale(1.3) rotate(-6deg);
+    opacity:0;
+  }
+  .result-tag.stamped{ animation:resultStamp 420ms cubic-bezier(.2,.9,.3,1) forwards; }
+  @keyframes resultStamp{
+    to{ transform:scale(1) rotate(-2deg); opacity:1; }
+  }
+  .result-sub{ font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin:10px 0 26px; }
+
+  .bar-row{ margin-bottom:14px; }
+  .bar-label{
+    display:flex; justify-content:space-between;
+    font-family:var(--font-mono); font-size:13px; margin-bottom:5px;
+  }
+  .bar-track{ height:10px; background:var(--paper-dark); border:1px solid var(--rule); }
+  .bar-fill{ height:100%; width:0%; background:var(--olive); transition:width 700ms ease-out; }
+  .bar-row.top .bar-fill{ background:var(--stamp); }
+  .bar-row.top .bar-label{ font-weight:600; }
+
+  .footer-actions{ margin-top:28px; display:flex; gap:10px; }
+
+  @media (prefers-reduced-motion: reduce){
+    .brand h1, .result-tag, .bar-fill, .scanline{ animation:none !important; transition:none !important; opacity:1 !important; transform:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="holes">
+    <span class="hole"></span><span class="hole"></span><span class="hole"></span>
+    <span class="hole"></span><span class="hole"></span><span class="hole"></span><span class="hole"></span>
+  </div>
+
+  <header class="masthead">
+    <div class="brand">
+      <h1>Pashu Parichay</h1>
+      <p>Field register for Indian cattle and buffalo breed identification</p>
+    </div>
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-step="login">1 sign in</div>
+      <div class="tab" data-step="capture">2 capture</div>
+      <div class="tab" data-step="result">3 result</div>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="screen visible" id="screen-login">
+      <div class="login-wrap">
+        <div class="field">
+          <label for="uname">Enumerator ID</label>
+          <input type="text" id="uname" placeholder="e.g. KA-0417">
+        </div>
+        <div class="field">
+          <label for="pword">Password</label>
+          <input type="password" id="pword" placeholder="••••••••">
+        </div>
+        <div class="error" id="login-error">Enter your enumerator ID and password.</div>
+        <button class="btn primary" id="login-btn">Sign in</button>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-capture">
+      <div class="capture-grid">
+        <div>
+          <label>Animal photograph</label>
+          <div class="viewfinder" id="viewfinder">
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+            <div class="scanline" id="scanline"></div>
+            <div class="placeholder" id="vf-placeholder">No image yet.<br>Upload a photo or use the camera.</div>
+            <img id="vf-img" style="display:none;">
+          </div>
+          <div class="capture-actions">
+            <button class="btn small" id="upload-btn">Upload image</button>
+            <button class="btn small" id="camera-btn">Use camera</button>
+          </div>
+          <input type="file" id="file-upload" accept="image/*">
+          <input type="file" id="file-camera" accept="image/*" capture="environment">
+        </div>
+
+        <div>
+          <div class="field">
+            <label for="animal-id">Animal ID</label>
+            <input type="text" id="animal-id" placeholder="e.g. IND-KA-2024-00931">
+          </div>
+          <div class="field">
+            <label>GPS coordinates</label>
+            <div class="gps-row">
+              <div class="field"><input type="text" id="gps" placeholder="lat, long"></div>
+              <button class="btn small" id="locate-btn">Use location</button>
+            </div>
+            <div class="gps-status" id="gps-status"></div>
+          </div>
+          <div class="error" id="capture-error">Add a photo and an animal ID before identifying.</div>
+          <button class="btn primary" id="identify-btn">Identify breed</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-result">
+      <div class="result-strip">
+        <span class="result-tag" id="result-tag">gir</span>
+        <div class="result-sub" id="result-meta">animal id — · confidence —</div>
+
+        <div id="bars"></div>
+
+        <div class="footer-actions">
+          <button class="btn" id="reset-btn">Scan another animal</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const state = { file:null, animalId:'', gps:'' };
+  const breeds = [
+    { name:'gir', score:91.34 },
+    { name:'sahiwal', score:4.22 },
+    { name:'rathi', score:1.76 },
+    { name:'deoni', score:1.10 },
+    { name:'tharparkar', score:0.92 }
+  ];
+
+  function setStep(step){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('visible'));
+    document.getElementById('screen-'+step).classList.add('visible');
+    document.querySelectorAll('.tab').forEach(t=>{
+      t.classList.toggle('active', t.dataset.step===step);
+    });
+  }
+
+  document.getElementById('login-btn').addEventListener('click', ()=>{
+    const u = document.getElementById('uname').value.trim();
+    const p = document.getElementById('pword').value.trim();
+    const err = document.getElementById('login-error');
+    if(!u || !p){ err.classList.add('show'); return; }
+    err.classList.remove('show');
+    document.querySelector('.tab[data-step="login"]').classList.add('done');
+    setStep('capture');
+  });
+
+  function loadImage(file){
+    if(!file) return;
+    state.file = file;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = document.getElementById('vf-img');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      document.getElementById('vf-placeholder').style.display = 'none';
+      const line = document.getElementById('scanline');
+      line.classList.remove('sweep'); void line.offsetWidth;
+      line.classList.add('sweep');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById('upload-btn').addEventListener('click', ()=>document.getElementById('file-upload').click());
+  document.getElementById('camera-btn').addEventListener('click', ()=>document.getElementById('file-camera').click());
+  document.getElementById('file-upload').addEventListener('change', e=>loadImage(e.target.files[0]));
+  document.getElementById('file-camera').addEventListener('change', e=>loadImage(e.target.files[0]));
+
+  document.getElementById('locate-btn').addEventListener('click', ()=>{
+    const status = document.getElementById('gps-status');
+    if(!navigator.geolocation){
+      status.textContent = 'Location is not available in this browser. Enter coordinates manually.';
+      return;
+    }
+    status.textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        const lat = pos.coords.latitude.toFixed(4);
+        const lon = pos.coords.longitude.toFixed(4);
+        document.getElementById('gps').value = lat+', '+lon;
+        status.textContent = 'Location captured.';
+      },
+      ()=>{ status.textContent = 'Location denied. Enter coordinates manually.'; }
+    );
+  });
+
+  document.getElementById('identify-btn').addEventListener('click', function(){
+    const animalId = document.getElementById('animal-id').value.trim();
+    const err = document.getElementById('capture-error');
+    if(!state.file || !animalId){ err.classList.add('show'); return; }
+    err.classList.remove('show');
+    state.animalId = animalId;
+    state.gps = document.getElementById('gps').value.trim() || 'not recorded';
+
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Identifying…';
+    const line = document.getElementById('scanline');
+    line.classList.add('pulse');
+
+    setTimeout(()=>{
+      line.classList.remove('pulse');
+      btn.disabled = false;
+      btn.textContent = 'Identify breed';
+      showResult();
+      document.querySelector('.tab[data-step="capture"]').classList.add('done');
+      setStep('result');
+    }, 1400);
+  });
+
+  function showResult(){
+    const tag = document.getElementById('result-tag');
+    tag.textContent = breeds[0].name;
+    tag.classList.remove('stamped'); void tag.offsetWidth;
+    tag.classList.add('stamped');
+
+    document.getElementById('result-meta').textContent =
+      'animal id ' + state.animalId + ' · gps ' + state.gps + ' · top match ' + breeds[0].score.toFixed(2) + '%';
+
+    const barsWrap = document.getElementById('bars');
+    barsWrap.innerHTML = '';
+    breeds.forEach((b,i)=>{
+      const row = document.createElement('div');
+      row.className = 'bar-row' + (i===0 ? ' top' : '');
+      row.innerHTML =
+        '<div class="bar-label"><span>'+b.name+'</span><span>'+b.score.toFixed(2)+'%</span></div>'+
+        '<div class="bar-track"><div class="bar-fill" style="transition-delay:'+(i*90)+'ms"></div></div>';
+      barsWrap.appendChild(row);
+      requestAnimationFrame(()=>{
+        row.querySelector('.bar-fill').style.width = b.score+'%';
+      });
+    });
+  }
+
+  document.getElementById('reset-btn').addEventListener('click', ()=>{
+    document.getElementById('animal-id').value = '';
+    document.getElementById('gps').value = '';
+    document.getElementById('gps-status').textContent = '';
+    document.getElementById('vf-img').style.display = 'none';
+    document.getElementById('vf-placeholder').style.display = 'block';
+    state.file = null;
+    setStep('capture');
+  });
+
+  document.querySelectorAll('.tab.done').forEach(t=>{
+    t.addEventListener('click', ()=>setStep(t.dataset.step));
+  });
+</script>
+
+</body>
+</html>

@@ -1,24 +1,47 @@
 
 # Backend
+
 ## Core service
-- `app.py`: FastAPI app and server-rendered UI routes
-- `db.py`: SQLite connection/bootstrap
-- `schema.sql`: canonical schema for users and predictions
+- `app.py`: FastAPI app, server-rendered UI routes, REST API endpoints, and session management.
+- `db.py`: SQLite connection + initialization helpers.
+- `schema.sql`: Canonical SQL schema for users and predictions.
+- `app.db`: SQLite database file.
+- `test_api.py`: Automated test suite testing all endpoints with diverse pictures.
+- `create_test_images.py`: Generator for diverse cattle test pictures.
 
-## ML workspace (kept inside backend)
-- `ml/src/`: training/inference/preprocessing/config modules
-- `ml/export_low_hardware.py`: quantized/TorchScript export utility
-- `ml/colab_breed_recognition.py`: Colab-oriented single-file flow
+## Entrypoints
 
-## Entrypoint
-
+From repository root:
 ```bash
 uvicorn backend.app:app --host 0.0.0.0 --port 8000
+```
 
-# Backend Structure
+From inside `backend/` directory:
+```powershell
+./run_local.ps1
+# or:
+uvicorn app:app --reload --port 8000
+```
 
-- `app.py` FastAPI web app and inference routes.
-- `db.py` SQLite connection + initialization.
-- `schema.sql` canonical SQL schema and indexes.
-- `app.db` runtime SQLite database (generated).
+## Running Automated Tests
+
+Ensure the server is running on port 8000, then execute:
+```bash
+python backend/test_api.py
+```
+
+## API Endpoints
+
+| Endpoint | Method | Format | Description |
+| --- | --- | --- | --- |
+| `/health` | GET | JSON | System health and model load status. |
+| `/` | GET | HTML | Home page (redirects to `/signin` if unauthenticated). |
+| `/signin` | GET, POST | HTML / JSON | Sign-in page and authentication handler. |
+| `/create-account` | GET, POST | HTML / JSON | User registration page and handler. |
+| `/logout` | GET | HTML / JSON | Clears user session. |
+| `/predict` | POST | HTML / JSON | Image upload form handler & dual JSON API. |
+| `/api/predict` | POST | JSON | Dedicated REST API for direct model inference. |
+| `/api/predictions`| GET | JSON | Returns recent saved predictions for the logged-in user. |
+| `/debug/bundle` | GET | JSON | Bundle diagnostic file listing (enabled via `DEBUG_BUNDLE=true`). |
+
 
