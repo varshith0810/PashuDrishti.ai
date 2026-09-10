@@ -9,7 +9,7 @@ env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: pashudrishti-ai
   ECS_CLUSTER: pashudrishti-cluster
-  ECS_SERVICE: pashudrishti-service
+  ECS_SERVICE: pashudrishti-web-service
   CONTAINER_NAME: pashudrishti-app
 
 jobs:
