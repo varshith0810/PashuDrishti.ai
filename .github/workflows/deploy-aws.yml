@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
   ECR_REPOSITORY: pashudrishti-ai
   ECS_CLUSTER: pashudrishti-cluster
   ECS_SERVICE: pashudrishti-service

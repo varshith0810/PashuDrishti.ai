@@ -4,11 +4,11 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
-  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::239830941290:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "pashudrishti-app",
-      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/pashudrishti-ai:latest",
+      "image": "239830941290.dkr.ecr.ap-south-1.amazonaws.com/pashudrishti-ai:latest",
       "essential": true,
       "portMappings": [
         {
@@ -36,7 +36,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/pashudrishti-backend",
-          "awslogs-region": "us-east-1",
+          "awslogs-region": "ap-south-1",
           "awslogs-stream-prefix": "ecs"
         }
       }
