@@ -17,7 +17,13 @@ class Predictor:
         model = models.efficientnet_b0(weights=None)
         in_features = model.classifier[1].in_features
         model.classifier[1] = nn.Linear(in_features, len(self.classes))
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        try:
+            state = torch.load(model_path, map_location=self.device, weights_only=False)
+        except TypeError:
+            state = torch.load(model_path, map_location=self.device)
+        if isinstance(state, dict) and "model_state_dict" in state:
+            state = state["model_state_dict"]
+        model.load_state_dict(state)
         self.model = model.to(self.device).eval()
 
         self.tfms = transforms.Compose([
@@ -42,4 +48,15 @@ class Predictor:
         ]
 def load_predictor():
     paths = Paths()
+    candidate_dirs = [
+        paths.model_dir,
+        paths.project_root.parent / "models",
+        Path("models"),
+        Path("backend/ml/models"),
+    ]
+    for c in candidate_dirs:
+        m = c / "breed_classifier.pt"
+        cl = c / "class_names.json"
+        if m.exists() and cl.exists():
+            return Predictor(m, cl)
     return Predictor(paths.model_dir / "breed_classifier.pt", paths.model_dir / "class_names.json")

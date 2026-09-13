@@ -1,8 +1,8 @@
 import hashlib
 import sqlite3
-from pathlib import Path
+import db
 
-DB_PATH = Path(__file__).resolve().parent / "app.db"
+DB_PATH = db.DB_PATH
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -15,7 +15,7 @@ TEST_USERS = [
 ]
 
 def seed_users():
-    conn = sqlite3.connect(DB_PATH)
+    conn = db.get_conn()
     cursor = conn.cursor()
     
     print(f"Connecting to database: {DB_PATH}")

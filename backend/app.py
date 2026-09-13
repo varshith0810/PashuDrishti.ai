@@ -26,11 +26,12 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 import db
 import hashlib
+import traceback
 
 try:
-    from backend.ui import modern_home, modern_signin, modern_create_account, modern_result
+    from backend.ui import modern_home, modern_signin, modern_create_account, modern_result, modern_shell
 except ImportError:
-    from ui import modern_home, modern_signin, modern_create_account, modern_result
+    from ui import modern_home, modern_signin, modern_create_account, modern_result, modern_shell
 
 APP_TITLE = "Cattle Breed Recognition Frontend + API"
 DEFAULT_MODEL_BUNDLE = "cattle_model_low_hw.tar.gz"
@@ -207,6 +208,12 @@ def resolve_location_label(gps_coordinates: str) -> str:
         label = data.get("display_name") or gps
     _GEO_CACHE[gps] = label
     return label
+def _safe_torch_load(model_path: Path) -> Any:
+    try:
+        return torch.load(model_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        return torch.load(model_path, map_location="cpu")
+
 def _extract_bundle(bundle_path: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(bundle_path, "r:gz") as archive:
@@ -214,11 +221,17 @@ def _extract_bundle(bundle_path: Path, destination: Path) -> None:
             archive.extractall(destination, filter="data")
         except TypeError:
             archive.extractall(destination)
+
 def _bundle_files(bundle_path: Path, destination: Path) -> list[Path]:
+    classes_existing = list(destination.rglob("class_names.json"))
+    model_existing = list(destination.rglob("*.pt"))
+    if classes_existing and model_existing:
+        return [path for path in destination.rglob("*") if path.is_file()]
     if not bundle_path.exists():
         raise FileNotFoundError(f"Bundle not found: {bundle_path}")
     _extract_bundle(bundle_path, destination)
     return [path for path in destination.rglob("*") if path.is_file()]
+
 def _load_classes(classes_path: Path) -> list[str]:
     with classes_path.open("r", encoding="utf-8") as classes_file:
         classes = json.load(classes_file)
@@ -227,28 +240,79 @@ def _load_classes(classes_path: Path) -> list[str]:
     if not classes:
         raise ValueError("class_names.json must contain at least one class name")
     return classes
+
 def _load_int8_model(model_path: Path, classes: list[str]) -> torch.nn.Module:
     base_model = models.efficientnet_b0(weights=None)
     base_model.classifier[1] = nn.Linear(base_model.classifier[1].in_features, len(classes))
     quantized_model = torch.quantization.quantize_dynamic(base_model.eval(), {nn.Linear}, dtype=torch.qint8)
-    state = torch.load(model_path, map_location="cpu")
+    state = _safe_torch_load(model_path)
+    if isinstance(state, dict) and "model_state_dict" in state:
+        state = state["model_state_dict"]
     quantized_model.load_state_dict(state)
     return quantized_model.eval()
+
+def _load_fp32_model(model_path: Path, classes: list[str]) -> torch.nn.Module:
+    base_model = models.efficientnet_b0(weights=None)
+    base_model.classifier[1] = nn.Linear(base_model.classifier[1].in_features, len(classes))
+    state = _safe_torch_load(model_path)
+    if isinstance(state, dict) and "model_state_dict" in state:
+        state = state["model_state_dict"]
+    base_model.load_state_dict(state)
+    return base_model.eval()
+
 def _load_from_bundle(bundle_path: Path) -> tuple[torch.nn.Module, list[str], dict[str, str]]:
     bundle_dir = Path(tempfile.gettempdir()) / "cattle_model_bundle"
     files = _bundle_files(bundle_path, bundle_dir)
     classes_paths = [path for path in files if path.name == "class_names.json"]
     int8_paths = [path for path in files if path.name == "breed_classifier_int8.pt"]
     torchscript_paths = [path for path in files if path.name == "breed_classifier_ts.pt"]
+    fp32_paths = [path for path in files if path.name == "breed_classifier.pt"]
     if not classes_paths:
         raise FileNotFoundError("Model bundle missing class_names.json")
-    if not int8_paths and not torchscript_paths:
-        raise FileNotFoundError("Model bundle missing breed_classifier_int8.pt or breed_classifier_ts.pt")
+    if not int8_paths and not torchscript_paths and not fp32_paths:
+        raise FileNotFoundError("Model bundle missing breed_classifier_int8.pt, breed_classifier_ts.pt, or breed_classifier.pt")
     classes = _load_classes(classes_paths[0])
     if int8_paths:
         return _load_int8_model(int8_paths[0], classes), classes, {"type": "int8"}
-    torchscript_model = torch.jit.load(str(torchscript_paths[0]), map_location="cpu").eval()
-    return torchscript_model, classes, {"type": "torchscript"}
+    if torchscript_paths:
+        torchscript_model = torch.jit.load(str(torchscript_paths[0]), map_location="cpu").eval()
+        return torchscript_model, classes, {"type": "torchscript"}
+    return _load_fp32_model(fp32_paths[0], classes), classes, {"type": "fp32"}
+
+def _try_load_from_dir(c_dir: Path) -> tuple[torch.nn.Module, list[str], dict[str, Any]] | None:
+    classes_path = c_dir / "class_names.json"
+    if not classes_path.exists():
+        return None
+    try:
+        classes = _load_classes(classes_path)
+    except Exception as e:
+        print(f"Notice: Failed reading {classes_path}: {e}")
+        return None
+
+    int8_path = c_dir / "breed_classifier_int8.pt"
+    if int8_path.exists():
+        try:
+            return _load_int8_model(int8_path, classes), classes, {"type": "int8", "source": str(int8_path)}
+        except Exception as e:
+            print(f"Notice: Failed to load int8 model from {int8_path}: {e}")
+
+    ts_path = c_dir / "breed_classifier_ts.pt"
+    if ts_path.exists():
+        try:
+            ts_model = torch.jit.load(str(ts_path), map_location="cpu").eval()
+            return ts_model, classes, {"type": "torchscript", "source": str(ts_path)}
+        except Exception as e:
+            print(f"Notice: Failed to load TS model from {ts_path}: {e}")
+
+    fp32_path = c_dir / "breed_classifier.pt"
+    if fp32_path.exists():
+        try:
+            return _load_fp32_model(fp32_path, classes), classes, {"type": "fp32", "source": str(fp32_path)}
+        except Exception as e:
+            print(f"Notice: Failed to load FP32 model from {fp32_path}: {e}")
+
+    return None
+
 def _normalize_loaded(loaded: Any) -> tuple[torch.nn.Module, list[str], dict[str, Any]]:
     if isinstance(loaded, tuple):
         if len(loaded) == 3:
@@ -260,11 +324,30 @@ def _normalize_loaded(loaded: Any) -> tuple[torch.nn.Module, list[str], dict[str
     if isinstance(loaded, dict):
         return loaded.get("model"), loaded.get("classes"), loaded.get("meta", {"type": "unknown"})
     raise RuntimeError(f"Unexpected loader output type={type(loaded)}")
+
 def get_model() -> tuple[torch.nn.Module, list[str]]:
     global MODEL, CLASSES, MODEL_META
-    if MODEL is None or CLASSES is None:
-        MODEL, CLASSES, MODEL_META = _normalize_loaded(_load_from_bundle(_model_bundle_path()))
+    if MODEL is not None and CLASSES is not None:
+        return MODEL, CLASSES
+
+    candidate_dirs = [
+        BACKEND_DIR.parent / "models",
+        BACKEND_DIR / "ml" / "models",
+        Path("models"),
+        Path(tempfile.gettempdir()) / "cattle_model_bundle" / "models",
+        Path(tempfile.gettempdir()) / "cattle_model_bundle",
+    ]
+    for c_dir in candidate_dirs:
+        if c_dir.exists():
+            direct = _try_load_from_dir(c_dir)
+            if direct:
+                MODEL, CLASSES, MODEL_META = direct
+                print(f"Loaded model directly from {c_dir} (type={MODEL_META.get('type')})")
+                return MODEL, CLASSES
+
+    MODEL, CLASSES, MODEL_META = _normalize_loaded(_load_from_bundle(_model_bundle_path()))
     return MODEL, CLASSES
+
 def inspect_bundle_files() -> dict[str, Any]:
     bundle_path = _model_bundle_path()
     info: dict[str, Any] = {"bundle_path": str(bundle_path), "exists": bundle_path.exists(), "files": []}
@@ -432,18 +515,42 @@ async def predict_page(
         if wants_json:
             return JSONResponse(status_code=401, content={"status": "error", "message": "Authentication required. Please sign in."})
         return RedirectResponse(url="/signin", status_code=303)
+    
     try:
         content = await file.read()
+        if not content:
+            raise ValueError("Uploaded file is empty. Please select a valid animal image.")
         image = Image.open(BytesIO(content)).convert("RGB")
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+        msg = f"Invalid image: {exc}"
+        if wants_json:
+            return JSONResponse(status_code=400, content={"status": "error", "message": msg})
+        raise HTTPException(status_code=400, detail=msg) from exc
+
     try:
         model, classes = get_model()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Model load failed: {exc}. Ensure latest deployment is active.") from exc
+        traceback.print_exc()
+        msg = f"Model load failed: {exc}. Please verify cattle_model_low_hw.tar.gz or uncompressed model weights are available."
+        if wants_json:
+            return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+        raise HTTPException(status_code=500, detail=msg) from exc
 
-    prediction = _predict_image(image, model, classes)
-    location_label = resolve_location_label(gps_coordinates)
+    try:
+        prediction = _predict_image(image, model, classes)
+    except Exception as exc:
+        traceback.print_exc()
+        msg = f"Inference classification error: {exc}"
+        if wants_json:
+            return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+        raise HTTPException(status_code=500, detail=msg) from exc
+
+    try:
+        location_label = resolve_location_label(gps_coordinates)
+    except Exception as exc:
+        print(f"Location resolution notice: {exc}")
+        location_label = gps_coordinates.strip() or "N/A"
+
     image_b64 = base64.b64encode(content).decode("utf-8")
     
     # Optional S3 archiving for AWS deployments
@@ -453,16 +560,22 @@ async def predict_page(
     except Exception:
         s3_url = None
     
+    # Resilient DB persistence: history logging must never crash prediction
     user_id = request.session.get("user_id")
     if user_id:
-        conn = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO predictions (user_id, predicted_breed, confidence, animal_id, gps_coordinates) VALUES (?, ?, ?, ?, ?)",
-            (user_id, prediction.breed, prediction.confidence, animal_id, gps_coordinates)
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn = db.get_conn()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            if cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO predictions (user_id, predicted_breed, confidence, animal_id, gps_coordinates) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, prediction.breed, float(prediction.confidence), animal_id.strip(), gps_coordinates.strip())
+                )
+                conn.commit()
+            conn.close()
+        except Exception as db_exc:
+            print(f"Notice: Prediction history DB logging (non-fatal): {db_exc}")
 
     if wants_json:
         return JSONResponse(
@@ -477,7 +590,12 @@ async def predict_page(
                 "image_url": s3_url,
             },
         )
-    return HTMLResponse(render_result(request, prediction, animal_id, location_label, image_b64))
+    
+    try:
+        return HTMLResponse(render_result(request, prediction, animal_id, location_label, image_b64))
+    except Exception as render_exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Result rendering error: {render_exc}") from render_exc
 
 @app.post("/api/predict")
 async def api_predict(
@@ -488,27 +606,46 @@ async def api_predict(
 ):
     try:
         content = await file.read()
+        if not content:
+            raise ValueError("Uploaded file is empty. Please select a valid animal image.")
         image = Image.open(BytesIO(content)).convert("RGB")
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid image: {exc}"})
+    
     try:
         model, classes = get_model()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Model load failed: {exc}. Ensure latest deployment is active.") from exc
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Model load failed: {exc}"})
 
-    prediction = _predict_image(image, model, classes)
-    location_label = resolve_location_label(gps_coordinates)
+    try:
+        prediction = _predict_image(image, model, classes)
+    except Exception as exc:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Inference classification error: {exc}"})
+
+    try:
+        location_label = resolve_location_label(gps_coordinates)
+    except Exception as exc:
+        print(f"Location resolution notice: {exc}")
+        location_label = gps_coordinates.strip() or "N/A"
     
+    # Resilient DB persistence
     user_id = request.session.get("user_id")
     if user_id:
-        conn = db.get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO predictions (user_id, predicted_breed, confidence, animal_id, gps_coordinates) VALUES (?, ?, ?, ?, ?)",
-            (user_id, prediction.breed, prediction.confidence, animal_id, gps_coordinates)
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn = db.get_conn()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            if cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO predictions (user_id, predicted_breed, confidence, animal_id, gps_coordinates) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, prediction.breed, float(prediction.confidence), animal_id.strip(), gps_coordinates.strip())
+                )
+                conn.commit()
+            conn.close()
+        except Exception as db_exc:
+            print(f"Notice: Prediction history DB logging (non-fatal): {db_exc}")
         
     return JSONResponse(
         status_code=200,
@@ -528,13 +665,63 @@ def api_predictions(request: Request):
     if not user_id:
         return JSONResponse(status_code=401, content={"status": "error", "message": "Authentication required."})
     
-    conn = db.get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, predicted_breed, confidence, animal_id, gps_coordinates, created_at FROM predictions WHERE user_id = ? ORDER BY id DESC LIMIT 50",
-        (user_id,)
-    )
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return JSONResponse(status_code=200, content={"status": "success", "predictions": rows})
+    try:
+        conn = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, predicted_breed, confidence, animal_id, gps_coordinates, created_at FROM predictions WHERE user_id = ? ORDER BY id DESC LIMIT 50",
+            (user_id,)
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return JSONResponse(status_code=200, content={"status": "success", "predictions": rows})
+    except Exception as exc:
+        print(f"Predictions fetch error: {exc}")
+        return JSONResponse(status_code=200, content={"status": "success", "predictions": []})
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    accept_header = request.headers.get("accept") or ""
+    if "application/json" in accept_header or request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=exc.status_code, content={"status": "error", "message": str(exc.detail)})
+    
+    error_html = f"""
+    <section class="glass-card" style="max-width: 600px; margin: 40px auto; text-align: center;">
+      <div style="font-size: 2.8rem; margin-bottom: 8px;">⚠️</div>
+      <h2 class="section-title" style="color: #f87171;">Action Failed ({exc.status_code})</h2>
+      <p style="color: #cbd5e1; margin: 14px 0 24px; font-size: 0.95rem; line-height: 1.6;">
+        {_escape(exc.detail)}
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <a href="/" class="btn-submit" style="text-decoration: none; padding: 10px 22px; width: auto;">Return to Classifier</a>
+        <a href="/signin" class="btn-secondary" style="text-decoration: none; padding: 10px 22px; width: auto;">Sign In</a>
+      </div>
+    </section>
+    """
+    return HTMLResponse(modern_shell(error_html, request, active_page=""), status_code=exc.status_code)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    accept_header = request.headers.get("accept") or ""
+    if "application/json" in accept_header or request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Server processing error: {str(exc)}"})
+    
+    error_html = f"""
+    <section class="glass-card" style="max-width: 600px; margin: 40px auto; text-align: center;">
+      <div style="font-size: 2.8rem; margin-bottom: 8px;">⚠️</div>
+      <h2 class="section-title" style="color: #f87171;">Prediction Service Notice</h2>
+      <p style="color: #cbd5e1; margin: 14px 0; font-size: 0.95rem; line-height: 1.6;">
+        An unexpected error occurred during execution:
+      </p>
+      <div style="background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; font-family: monospace; font-size: 0.85rem; margin-bottom: 24px; word-break: break-word;">
+        {_escape(str(exc))}
+      </div>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <a href="/" class="btn-submit" style="text-decoration: none; padding: 10px 22px; width: auto;">&larr; Return to Classifier</a>
+        <button type="button" onclick="window.location.reload()" class="btn-secondary" style="padding: 10px 22px; width: auto;">Try Again</button>
+      </div>
+    </section>
+    """
+    return HTMLResponse(modern_shell(error_html, request, active_page=""), status_code=500)
 
