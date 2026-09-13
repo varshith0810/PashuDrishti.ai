@@ -27,6 +27,11 @@ if str(BACKEND_DIR) not in sys.path:
 import db
 import hashlib
 
+try:
+    from backend.ui import modern_home, modern_signin, modern_create_account, modern_result
+except ImportError:
+    from ui import modern_home, modern_signin, modern_create_account, modern_result
+
 APP_TITLE = "Cattle Breed Recognition Frontend + API"
 DEFAULT_MODEL_BUNDLE = "cattle_model_low_hw.tar.gz"
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -140,49 +145,14 @@ def page_template(content: str, request: Request) -> str:
 def render_home(request: Request):
     if not _current_user(request):
         return RedirectResponse(url="/signin", status_code=303)
-    content = """
-    <section class='card'>
-      <h2>Indian Cattle & Buffalo Breed Classifier</h2>
-      <p class='muted'>Prediction is available only after sign in.</p>
-      <form action='/predict' method='post' enctype='multipart/form-data'>
-        <div class='grid'>
-          <div><label>Upload Animal Image</label><input type='file' name='file' accept='image/*' required></div>
-          <div><label>Animal ID (optional)</label><input type='text' name='animal_id' placeholder='COW-2026-001'></div>
-        </div>
-        <div style='margin-top:10px'>
-          <label>GPS Coordinates (lat,long)</label>
-          <input type='text' name='gps_coordinates' placeholder='30.8717,75.8520'>
-        </div>
-        <div style='margin-top:12px'><button type='submit'>Predict Breed</button></div>
-      </form>
-    </section>"""
-    return HTMLResponse(page_template(content, request))
+    return HTMLResponse(modern_home(request))
+
 def render_signin(request: Request, message: str = "", *, is_error: bool = False) -> str:
-    content = f"""
-    <section class='card'>
-      <h2>Sign In</h2>
-      {_flash_html(message, is_error=is_error)}
-      <form action='/signin' method='post'>
-        <label>Email or Username</label><input name='identity' required>
-        <label style='margin-top:8px'>Password</label><input type='password' name='password' required>
-        <div style='margin-top:12px'><button type='submit'>Sign In</button></div>
-      </form>
-      <p>New user? <a href='/create-account'>Create account</a></p>
-    </section>"""
-    return page_template(content, request)
+    return modern_signin(request, message, is_error=is_error)
+
 def render_create_account(request: Request, message: str = "", *, is_error: bool = False) -> str:
-    content = f"""
-    <section class='card'>
-      <h2>Create Account</h2>
-      {_flash_html(message, is_error=is_error)}
-      <form action='/create-account' method='post'>
-        <label>Email</label><input type='email' name='email' required>
-        <label style='margin-top:8px'>Username</label><input name='username' required>
-        <label style='margin-top:8px'>Password</label><input type='password' name='password' required>
-        <div style='margin-top:12px'><button type='submit'>Create Account</button></div>
-      </form>
-    </section>"""
-    return page_template(content, request)
+    return modern_create_account(request, message, is_error=is_error)
+
 def render_result(
     request: Request,
     prediction: PredictionResult,
@@ -190,23 +160,7 @@ def render_result(
     location_label: str,
     image_b64: str,
 ) -> str:
-    content = f"""
-    <section class='card'>
-      <h2>Prediction Result</h2>
-      <div class='result'>
-        <p><b>Predicted Breed:</b> {_escape(prediction.breed)}</p>
-        <p><b>Confidence:</b> {prediction.confidence:.2f}%</p>
-        <p><b>Animal ID:</b> {_escape(animal_id.strip() or 'N/A')}</p>
-        <p><b>Detected Location:</b> {_escape(location_label)}</p>
-        <h4>Top Scores</h4>
-        <ul>{prediction.rows_html}</ul>
-      </div>
-      <div style='margin-top:12px'>
-        <h4>Uploaded Image</h4>
-        <img class='img-preview' src='data:image/jpeg;base64,{image_b64}' alt='Uploaded animal'>
-      </div>
-    </section>"""
-    return page_template(content, request)
+    return modern_result(request, prediction, animal_id, location_label, image_b64)
 _GEO_CACHE: dict[str, str] = {}
 
 def resolve_location_label(gps_coordinates: str) -> str:
