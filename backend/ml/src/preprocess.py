@@ -1,6 +1,16 @@
+import sys
 from pathlib import Path
 from collections import Counter
-from src.config import Paths, BREEDS
+
+# Ensure module path resolution whether executed directly or imported
+_ML_DIR = Path(__file__).resolve().parents[1]
+if str(_ML_DIR) not in sys.path:
+    sys.path.insert(0, str(_ML_DIR))
+
+try:
+    from src.config import Paths, BREEDS
+except ImportError:
+    from backend.ml.src.config import Paths, BREEDS
 def resolve_breeds_root(dataset_dir: Path) -> Path:
     if (dataset_dir / "train").exists() and (dataset_dir / "test").exists():
         return dataset_dir

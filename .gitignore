@@ -30,8 +30,12 @@ backend/test_images/
 models/
 data/
 outputs/
+archive/
 *.pt
 *.pth
+*.zip
+backend/ml/IndianCattleBuffaloeBreeds-Dataset/
+backend/ml/cattle_model_low_hw.tar.gz
 
 # Exceptions: Production Model Bundle must be tracked
-!cattle_model_low_hw.tar.gz
+!/cattle_model_low_hw.tar.gz

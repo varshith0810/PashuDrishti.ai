@@ -47,7 +47,7 @@ def resolve_breeds_root(dataset_dir: str) -> Path:
     raise FileNotFoundError(
         f"Invalid dataset_dir: {d}. Expected either <dir>/train & <dir>/test or <dir>/breeds/train & <dir>/breeds/test"
     )
-def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 32):
+def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 32, pin_memory: bool = True):
     train_tfms = transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.RandomHorizontalFlip(),
@@ -62,53 +62,128 @@ def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 
     ])
     train_ds = datasets.ImageFolder(breeds_root / "train", transform=train_tfms)
     test_ds = datasets.ImageFolder(breeds_root / "test", transform=test_tfms)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=pin_memory
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory
+    )
     return train_loader, test_loader, train_ds.classes
 def evaluate(model, loader, device):
     model.eval()
     correct, total = 0, 0
-    with torch.no_grad():
+    use_cuda = device.type == "cuda"
+    with torch.inference_mode():
         for x, y in loader:
-            x, y = x.to(device), y.to(device)
-            pred = model(x).argmax(dim=1)
+            x = x.to(device, non_blocking=use_cuda)
+            y = y.to(device, non_blocking=use_cuda)
+            if use_cuda:
+                with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                    pred = model(x).argmax(dim=1)
+            else:
+                pred = model(x).argmax(dim=1)
             correct += (pred == y).sum().item()
             total += y.size(0)
     return correct / max(total, 1)
-def train_model(breeds_root: Path, out_dir: Path, epochs: int = 8, lr: float = 1e-3, batch_size: int = 32):
+def train_model(breeds_root: Path, out_dir: Path, epochs: int = 8, lr: float = 1e-3, batch_size: int = 32, resume: bool = False):
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, test_loader, classes = get_dataloaders(breeds_root, batch_size=batch_size)
+    use_cuda = device.type == "cuda"
+    if use_cuda:
+        torch.backends.cudnn.benchmark = True
+        gpu_name = torch.cuda.get_device_name(0)
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        print(f"[CUDA Framework Enabled] Training on GPU: {gpu_name} ({vram_gb:.2f} GB VRAM) with Mixed Precision (AMP)")
+    else:
+        print("[Notice] CUDA not detected or disabled; running on CPU.")
+
+    train_loader, test_loader, classes = get_dataloaders(breeds_root, batch_size=batch_size, pin_memory=use_cuda)
+    with open(out_dir / "class_names.json", "w", encoding="utf-8") as f:
+        json.dump(classes, f)
+
     model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(classes))
     model = model.to(device)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_cuda)
+
+    start_epoch = 0
     best_acc = 0.0
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0.0
-        for x, y in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
-            x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
-            logits = model(x)
-            loss = criterion(logits, y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-        val_acc = evaluate(model, test_loader, device)
-        avg_loss = total_loss / max(len(train_loader), 1)
-        print(f"epoch={epoch+1} loss={avg_loss:.4f} val_acc={val_acc:.4f}")
-        if val_acc > best_acc:
-            best_acc = val_acc
-            torch.save(model.state_dict(), out_dir / "breed_classifier.pt")
-    with open(out_dir / "class_names.json", "w", encoding="utf-8") as f:
-        json.dump(classes, f)
-    print(f"Training completed. Best validation accuracy = {best_acc:.4f}")
+    checkpoint_file = out_dir / "checkpoint_latest.pt"
+
+    if resume:
+        if checkpoint_file.exists():
+            print(f"[Resume] Loading checkpoint from {checkpoint_file}...")
+            ckpt = torch.load(checkpoint_file, map_location=device)
+            model.load_state_dict(ckpt["model_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            if "scaler_state_dict" in ckpt and use_cuda:
+                scaler.load_state_dict(ckpt["scaler_state_dict"])
+            start_epoch = ckpt.get("epoch", 0)
+            best_acc = ckpt.get("best_acc", 0.0)
+            print(f"[Resume] Successfully resumed from epoch {start_epoch} (Best val_acc={best_acc:.4f})")
+        elif (out_dir / "breed_classifier.pt").exists():
+            print(f"[Resume] Loading weights from {out_dir / 'breed_classifier.pt'}...")
+            model.load_state_dict(torch.load(out_dir / "breed_classifier.pt", map_location=device))
+
+    try:
+        for epoch in range(start_epoch, epochs):
+            model.train()
+            total_loss = 0.0
+            for x, y in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
+                x = x.to(device, non_blocking=use_cuda)
+                y = y.to(device, non_blocking=use_cuda)
+                optimizer.zero_grad(set_to_none=True)
+                with torch.amp.autocast(device_type="cuda", dtype=torch.float16, enabled=use_cuda):
+                    logits = model(x)
+                    loss = criterion(logits, y)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+                total_loss += loss.item()
+
+            val_acc = evaluate(model, test_loader, device)
+            avg_loss = total_loss / max(len(train_loader), 1)
+            print(f"epoch={epoch+1} loss={avg_loss:.4f} val_acc={val_acc:.4f}")
+
+            if val_acc > best_acc:
+                best_acc = val_acc
+                torch.save(model.state_dict(), out_dir / "breed_classifier.pt")
+                print(f"[Saved] New best model saved (val_acc={best_acc:.4f})")
+
+            # Save checkpoint after every epoch
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scaler_state_dict": scaler.state_dict() if use_cuda else {},
+                "best_acc": best_acc,
+                "classes": classes,
+            }, checkpoint_file)
+
+        print(f"Training completed. Best validation accuracy = {best_acc:.4f}")
+
+    except KeyboardInterrupt:
+        print(f"\n[Interrupted] Training paused by user at epoch {epoch + 1}.")
+        torch.save(model.state_dict(), out_dir / "breed_classifier_interrupted.pt")
+        torch.save({
+            "epoch": epoch + 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scaler_state_dict": scaler.state_dict() if use_cuda else {},
+            "best_acc": best_acc,
+            "classes": classes,
+        }, checkpoint_file)
+        print(f"[Saved] Checkpoint safely saved to {checkpoint_file}.")
+        print("You can resume anytime using: --resume")
 def load_predictor(model_dir: Path):
     with open(model_dir / "class_names.json", "r", encoding="utf-8") as f:
         classes = json.load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
     model = models.efficientnet_b0(weights=None)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(classes))
     model.load_state_dict(torch.load(model_dir / "breed_classifier.pt", map_location=device))
@@ -123,9 +198,14 @@ def predict_with_fields(image, animal_id, gps_coordinates, model, classes, tfms,
     if image is None:
         return {"error": "Please upload an animal image."}, None
     start = time.perf_counter()
-    x = tfms(image.convert("RGB")).unsqueeze(0).to(device)
-    with torch.no_grad():
-        probs = torch.softmax(model(x), dim=1)[0]
+    use_cuda = device.type == "cuda"
+    x = tfms(image.convert("RGB")).unsqueeze(0).to(device, non_blocking=use_cuda)
+    with torch.inference_mode():
+        if use_cuda:
+            with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                probs = torch.softmax(model(x), dim=1)[0]
+        else:
+            probs = torch.softmax(model(x), dim=1)[0]
         conf, idx = torch.max(probs, dim=0)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
@@ -160,6 +240,10 @@ def launch_app(model_dir: Path):
 def ask_dataset_dir_if_missing(dataset_dir: str) -> str:
     if dataset_dir:
         return dataset_dir
+    default_p = Path(__file__).resolve().parents[1] / "archive" / "IndianCattleBuffaloeBreeds-Dataset" / "breeds"
+    if default_p.exists():
+        print(f"Using auto-detected dataset directory: {default_p}")
+        return str(default_p)
     print("Enter dataset directory path (must contain train/test or breeds/train+test):")
     return input().strip()
 def interactive_predict_single_image(model_dir: Path):
@@ -183,7 +267,7 @@ def main(args):
         print("Validation report:")
         print(json.dumps(report, indent=2))
     if args.mode in {"train", "all"}:
-        train_model(breeds_root, model_dir, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size)
+        train_model(breeds_root, model_dir, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size, resume=args.resume)
         if args.mode == "all":
             interactive_predict_single_image(model_dir)
     if args.mode == "app":
@@ -196,6 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--resume", action="store_true", help="Resume training from latest saved checkpoint")
     # Check if running in an interactive environment (like Colab/Jupyter)
     if 'ipykernel' in sys.modules or 'google.colab' in sys.modules:
         # If running in Colab/Jupyter, parse an empty list of arguments

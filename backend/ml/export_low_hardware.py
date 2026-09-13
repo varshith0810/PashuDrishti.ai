@@ -1,6 +1,8 @@
 import argparse
 import json
 from pathlib import Path
+import shutil
+import tarfile
 import warnings
 
 import torch
@@ -44,6 +46,7 @@ def main():
     parser.add_argument("--out_dir", type=str, default="models")
     parser.add_argument("--work_dir", type=str, default=".", help="Project/work directory used during training")
     parser.add_argument("--skip_onnx", action="store_true", help="Skip ONNX export")
+    parser.add_argument("--tar_name", type=str, default="cattle_model_low_hw.tar.gz", help="Archive name for packaged model")
     args = parser.parse_args()
 
     work_dir = Path(args.work_dir)
@@ -116,6 +119,25 @@ def main():
     print(f"- TorchScript: {ts_path}")
     if onnx_path and onnx_path.exists():
         print(f"- ONNX: {onnx_path}")
+
+    tar_path = out_dir / args.tar_name
+    print(f"\nPackaging model archive: {tar_path}...")
+    with tarfile.open(tar_path, "w:gz") as tar:
+        files_to_pack = [model_path, classes_path, quantized_path, ts_path]
+        if onnx_path and onnx_path.exists():
+            files_to_pack.append(onnx_path)
+        for f in files_to_pack:
+            if f and f.exists():
+                tar.add(f, arcname=f.name)
+                print(f"  + Added: {f.name} ({f.stat().st_size / (1024*1024):.2f} MB)")
+
+    root_tar = work_dir / args.tar_name
+    if root_tar.resolve() != tar_path.resolve():
+        shutil.copy2(tar_path, root_tar)
+
+    print(f"\nSUCCESS: Created {tar_path} ({tar_path.stat().st_size / (1024*1024):.2f} MB)")
+    if root_tar.exists() and root_tar.resolve() != tar_path.resolve():
+        print(f"Also available at: {root_tar}")
 
 
 if __name__ == "__main__":

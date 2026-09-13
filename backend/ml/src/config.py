@@ -14,7 +14,7 @@ BREEDS = [
 @dataclass
 class Paths:
     project_root: Path = Path(__file__).resolve().parents[1]
-    data_zip: Path = project_root / "dataset.zip"
-    extracted_data: Path = project_root / "data" / "breeds"
+    data_zip: Path = project_root / "archive.zip"
+    extracted_data: Path = project_root / "archive" / "IndianCattleBuffaloeBreeds-Dataset" / "breeds"
     model_dir: Path = project_root / "models"
     output_dir: Path = project_root / "outputs"

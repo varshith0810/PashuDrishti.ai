@@ -12,6 +12,8 @@ class Predictor:
             self.classes = json.load(f)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
         model = models.efficientnet_b0(weights=None)
         in_features = model.classifier[1].in_features
         model.classifier[1] = nn.Linear(in_features, len(self.classes))
@@ -24,9 +26,14 @@ class Predictor:
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
     def predict(self, image: Image.Image, top_k: int = 3):
-        x = self.tfms(image.convert("RGB")).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            logits = self.model(x)
+        use_cuda = self.device.type == "cuda"
+        x = self.tfms(image.convert("RGB")).unsqueeze(0).to(self.device, non_blocking=use_cuda)
+        with torch.inference_mode():
+            if use_cuda:
+                with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                    logits = self.model(x)
+            else:
+                logits = self.model(x)
             probs = torch.softmax(logits, dim=1)[0]
             vals, idxs = torch.topk(probs, k=min(top_k, len(self.classes)))
         return [

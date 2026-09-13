@@ -67,7 +67,7 @@ def resolve_breeds_root(dataset_dir: str) -> Path:
     )
 
 
-def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 32):
+def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 32, pin_memory: bool = True):
     train_tfms = transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.RandomHorizontalFlip(),
@@ -82,18 +82,28 @@ def get_dataloaders(breeds_root: Path, image_size: int = 224, batch_size: int = 
     ])
     train_ds = datasets.ImageFolder(breeds_root / "train", transform=train_tfms)
     test_ds = datasets.ImageFolder(breeds_root / "test", transform=test_tfms)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=pin_memory
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory
+    )
     return train_loader, test_loader, train_ds.classes
 
 
 def evaluate(model, loader, device):
     model.eval()
     correct, total = 0, 0
-    with torch.no_grad():
+    use_cuda = device.type == "cuda"
+    with torch.inference_mode():
         for x, y in loader:
-            x, y = x.to(device), y.to(device)
-            pred = model(x).argmax(dim=1)
+            x = x.to(device, non_blocking=use_cuda)
+            y = y.to(device, non_blocking=use_cuda)
+            if use_cuda:
+                with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                    pred = model(x).argmax(dim=1)
+            else:
+                pred = model(x).argmax(dim=1)
             correct += (pred == y).sum().item()
             total += y.size(0)
     return correct / max(total, 1)
@@ -102,7 +112,16 @@ def evaluate(model, loader, device):
 def train_model(breeds_root: Path, out_dir: Path, epochs: int = 8, lr: float = 1e-3, batch_size: int = 32):
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, test_loader, classes = get_dataloaders(breeds_root, batch_size=batch_size)
+    use_cuda = device.type == "cuda"
+    if use_cuda:
+        torch.backends.cudnn.benchmark = True
+        gpu_name = torch.cuda.get_device_name(0)
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        print(f"[CUDA Framework Enabled] Training on GPU: {gpu_name} ({vram_gb:.2f} GB VRAM) with Mixed Precision (AMP)")
+    else:
+        print("[Notice] CUDA not detected or disabled; running on CPU.")
+
+    train_loader, test_loader, classes = get_dataloaders(breeds_root, batch_size=batch_size, pin_memory=use_cuda)
 
     model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(classes))
@@ -110,18 +129,22 @@ def train_model(breeds_root: Path, out_dir: Path, epochs: int = 8, lr: float = 1
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_cuda)
 
     best_acc = 0.0
     for epoch in range(epochs):
         model.train()
         total_loss = 0.0
         for x, y in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
-            x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
-            logits = model(x)
-            loss = criterion(logits, y)
-            loss.backward()
-            optimizer.step()
+            x = x.to(device, non_blocking=use_cuda)
+            y = y.to(device, non_blocking=use_cuda)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast(device_type="cuda", dtype=torch.float16, enabled=use_cuda):
+                logits = model(x)
+                loss = criterion(logits, y)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             total_loss += loss.item()
 
         val_acc = evaluate(model, test_loader, device)
@@ -140,6 +163,8 @@ def load_predictor(model_dir: Path):
     with open(model_dir / "class_names.json", "r", encoding="utf-8") as f:
         classes = json.load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
 
     model = models.efficientnet_b0(weights=None)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(classes))
@@ -159,9 +184,14 @@ def predict_with_fields(image, animal_id, gps_coordinates, model, classes, tfms,
         return {"error": "Please upload an animal image."}, None
 
     start = time.perf_counter()
-    x = tfms(image.convert("RGB")).unsqueeze(0).to(device)
-    with torch.no_grad():
-        probs = torch.softmax(model(x), dim=1)[0]
+    use_cuda = device.type == "cuda"
+    x = tfms(image.convert("RGB")).unsqueeze(0).to(device, non_blocking=use_cuda)
+    with torch.inference_mode():
+        if use_cuda:
+            with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                probs = torch.softmax(model(x), dim=1)[0]
+        else:
+            probs = torch.softmax(model(x), dim=1)[0]
         conf, idx = torch.max(probs, dim=0)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
